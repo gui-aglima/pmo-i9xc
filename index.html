@@ -463,7 +463,7 @@ function projCard(c){
 function portfolioView(all){
   const open=wizOpen===null?all.length===0:wizOpen;
   let h=`<div class="hd"><div><div class="eyebrow">Project Owner</div><h1>Projetos de implantação</h1><p>${all.length?`${all.length} ${plural(all.length,'projeto','projetos')} em andamento. Escolha um para ver as etapas ou crie outro.`:'Informe o Go Live e o artefato projeta todas as datas do checklist, para trás, em dias úteis.'}</p></div>
-    <div class="acts" style="margin:0">${all.length?`<button class="btn" data-act="imgall">Imagem do portfólio</button><button class="btn primary" data-act="wiz">${open?'Fechar':'+ Novo projeto'}</button>`:''}</div></div>`;
+    <div class="acts" style="margin:0">${all.length?`<button class="btn" data-act="repall">Status report semanal</button><button class="btn" data-act="imgall">Imagem do portfólio</button><button class="btn primary" data-act="wiz">${open?'Fechar':'+ Novo projeto'}</button>`:''}</div></div>`;
   if(open)h+=wizardHTML();
   if(all.length)h+=`<div class="cards">${all.map(projCard).join('')}</div>`;
   return h;
@@ -594,7 +594,7 @@ function projectView(c){
   return `<button class="back" data-act="nav" data-v="portfolio">← Todos os projetos</button>
   <div class="hd"><div style="flex:1 1 360px"><div class="eyebrow">Checklist de implantação funcional</div><input class="nm" id="p-name" data-p="${id}" data-f="pname" value="${esc(p.name)}" aria-label="Nome do projeto"></div>
    <div class="acts" style="margin:0">${window.HOSTED?`<button class="btn primary" data-act="ics" data-p="${id}">Baixar agenda (.ics)</button>`:`<button class="btn primary" data-act="sync" data-p="${id}" ${sy&&sy.run?'disabled':''}>Enviar ao Google Agenda${pd.n+pd.u+pd.d?` (${pd.n+pd.u+pd.d})`:''}</button>`}
-   <button class="btn" data-act="project" data-p="${id}" title="Encaixa todas as etapas entre hoje e o Go Live">Projetar tarefas</button><input type="text" class="rec" data-p="${id}" data-f="recado" value="${esc(p.recado||'')}" placeholder="Recado do dia (opcional)" aria-label="Recado para a imagem" maxlength="160"><button class="btn" data-act="img" data-p="${id}">Gerar imagem</button>${p.blk0?`<button class="btn" data-act="restore" data-p="${id}">Restaurar durações</button>`:''}
+   <button class="btn" data-act="project" data-p="${id}" title="Encaixa todas as etapas entre hoje e o Go Live">Projetar tarefas</button><input type="text" class="rec" data-p="${id}" data-f="recado" value="${esc(p.recado||'')}" placeholder="Recado do dia (opcional)" aria-label="Recado para a imagem" maxlength="160"><button class="btn" data-act="img" data-p="${id}">Gerar imagem</button><button class="btn" data-act="rep" data-p="${id}">Status report</button>${p.blk0?`<button class="btn" data-act="restore" data-p="${id}">Restaurar durações</button>`:''}
    <button class="btn danger" data-act="del" data-p="${id}">${delAsk===id?'Confirmar exclusão':'Excluir'}</button></div></div>
   ${delAsk===id?`<div class="alert bad"><span>Isso apaga o projeto e remove as ${c.flat.filter(s=>s.o.ev&&s.o.ev!=='?').length} tarefas dele do Agenda. Clique de novo em <b>Confirmar exclusão</b> ou <button class="btn small ghost" data-act="delno">cancelar</button>.</span></div>`:''}
   <div class="prev" style="margin-top:0">
@@ -770,6 +770,77 @@ async function exportPortfolioImage(){
   },H,'Consolidado do portfólio - '+iso(T)+'.jpg');
 }
 
+/* ---------- status report semanal (executivo) ---------- */
+const CP2={warn:'#E8A100',okBg:'#EAF7F0',warnBg:'#FFF6DD',badBg:'#FDEDEC'};
+function reportInfo(c,T){
+  const exp=c.act.length?c.act.filter(s=>s.end<=T).length/c.act.length*100:0,act=c.prog,left=countBD(T,c.G,c.H);
+  const wk=c.act.filter(s=>s.done&&s.o.doneAt&&T-num(s.o.doneAt)<=6&&T-num(s.o.doneAt)>=0);
+  const full=c.phases.filter(f=>!f.off&&f.act.length&&f.nDone===f.act.length&&f.n<=c.goAfter);
+  let st='ok';const gap=exp-act;
+  if(c.overrun||(c.nLate>0&&gap>15)||(left<=5&&act<80))st='bad';else if(c.nLate>0||gap>5||c.nBlk>0)st='warn';
+  const pos=[],att=[];
+  if(wk.length)pos.push(wk.length+' '+plural(wk.length,'etapa concluída','etapas concluídas')+' na semana');
+  if(full.length)pos.push(full.length===1?'Bloco "'+full[0].t+'" concluído':full.length+' blocos concluídos ('+full.map(f=>f.t).slice(-2).join(', ')+')');
+  if(!c.nLate&&act>=exp-5)pos.push('Dentro do cronograma: '+Math.round(act)+'% real contra '+Math.round(exp)+'% previsto');
+  if(left>0&&!c.overrun&&st==='ok'&&left>=10)pos.push('Go Live mantido em '+fD(c.G)+' com '+left+' dias úteis de margem');
+  if(c.nLate){const l=c.act.filter(s=>s.late&&!s.done).slice(0,2);att.push(c.nLate+' '+plural(c.nLate,'etapa atrasada','etapas atrasadas')+': '+l.map(s=>s.base).join('; ')+(c.nLate>2?'…':''))}
+  if(c.nBlk)att.push(c.nBlk+' '+plural(c.nBlk,'etapa bloqueada','etapas bloqueadas'));
+  if(c.overrun)att.push('Plano passa do Go Live: replanejar prazo ou data');
+  else if(gap>5&&!c.nLate)att.push('Ritmo abaixo do previsto ('+Math.round(act)+'% contra '+Math.round(exp)+'%)');
+  if(c.nCli)att.push(c.nCli+' '+plural(c.nCli,'entrega','entregas')+' do cliente em acompanhamento');
+  if(c.p.termo&&Object.keys(c.p.termo).length&&c.pend&&c.pend.length)att.push('Termo de abertura com '+c.pend.length+' respostas pendentes');
+  if(c.p.blk0)att.push('Prazos compactados para caber no Go Live');
+  return{exp,act,left,st,pos,att,nWk:wk.length};
+}
+function flag(g,x,y){g.fillStyle='#1B1A3A';g.fillRect(x,y-34,3,40);const sz=7;for(let r=0;r<4;r++)for(let q=0;q<5;q++){g.fillStyle=(r+q)%2?'#fff':'#1B1A3A';g.fillRect(x+3+q*sz,y-34+r*sz,sz,sz)}g.strokeStyle='#1B1A3A';g.lineWidth=1;g.strokeRect(x+3,y-34,5*sz,4*sz)}
+async function exportStatus(ids){
+  const T=todayN(),list=ids.map(i=>P[i]).filter(Boolean).sort((a,b)=>(a.created||0)-(b.created||0)).map(build);if(!list.length)return;
+  const info=list.map(c=>reportInfo(c,T)),multi=list.length>1;
+  const mon=T-((((T+4)%7)+6)%7),cnt={ok:0,warn:0,bad:0};info.forEach(i=>cnt[i.st]++);
+  const tag=(c,t)=>multi?c.p.name+': '+t:t;
+  const POS=[],ATT=[];list.forEach((c,k)=>{info[k].pos.slice(0,2).forEach(t=>POS.push(tag(c,t)));info[k].att.slice(0,3).forEach(t=>ATT.push(tag(c,t)))});
+  if(!POS.length)POS.push('Sem marcos concluídos nesta semana.');if(!ATT.length)ATT.push('Nenhum ponto de atenção no momento.');
+  const cardH=208,cm=document.createElement('canvas').getContext('2d');cm.font='500 15px '+FONT;
+  const lines=a=>a.reduce((n,t)=>n+wrap(cm,t,470,3).length,0),bh=Math.max(lines(POS),lines(ATT))*21+a_pad(POS.length,ATT.length)+60;
+  function a_pad(a,b){return Math.max(a,b)*8}
+  const top=268,H=top+list.length*(cardH+14)+bh+70;
+  const stC={ok:CP.ok,warn:CP2.warn,bad:CP.bad},stL={ok:'No prazo',warn:'Atenção',bad:'Crítico'};
+  await canvasOut((g,W,ring)=>{
+    head(g,ring,'Status report semanal · Implementação i9','Semana de '+fD(mon)+' a '+fD(mon+4)+'/'+new Date().getFullYear());
+    const bw=(W-88-48)/4;[['Projetos',String(list.length),CP.indigo],['No prazo',String(cnt.ok),CP.ok],['Em atenção',String(cnt.warn),CP2.warn],['Críticos',String(cnt.bad),CP.bad]].forEach((k,i)=>{
+      const x=44+i*(bw+16);rr(g,x,122,bw,110,18,'#fff',CP.line);g.fillStyle=CP.mute;g.font='700 13px '+FONT;g.fillText(k[0].toUpperCase(),x+20,152);g.fillStyle=k[2];g.font='800 44px '+FONT;g.fillText(k[1],x+20,206)});
+    list.forEach((c,k)=>{
+      const i=info[k],y=top+k*(cardH+14),X=44,Wd=W-88,col=stC[i.st];
+      rr(g,X,y,Wd,cardH,20,'#fff',CP.line);rr(g,X,y,8,cardH,4,col);
+      g.fillStyle=CP.ink;g.font='800 22px '+FONT;g.fillText(fit(g,c.p.name,640),X+30,y+38);
+      g.fillStyle=CP.mute;g.font='500 14px '+FONT;g.fillText('Go Live '+fFull(c.G)+' · '+(i.left>0?i.left+' dias úteis restantes':i.left===0?'é hoje':'data passou')+' · '+c.nDone+'/'+c.act.length+' etapas',X+30,y+62);
+      const pw=118;rr(g,X+Wd-pw-24,y+18,pw,34,17,col);g.fillStyle='#fff';g.font='700 15px '+FONT;g.textAlign='center';g.fillText(stL[i.st],X+Wd-pw/2-24,y+41);g.textAlign='left';
+      // barra de progresso real x previsto
+      const bx=X+30,bwid=Wd-60-120,by=y+84;rr(g,bx,by,bwid,16,8,CP.track);if(i.act>0)rr(g,bx,by,Math.max(16,bwid*i.act/100),16,8,col);
+      const ex=bx+bwid*Math.min(100,i.exp)/100;g.fillStyle=CP.ink;g.fillRect(ex-1.5,by-6,3,28);
+      g.fillStyle=col;g.font='800 26px '+FONT;g.textAlign='right';g.fillText(Math.round(i.act)+'%',X+Wd-30,by+16);g.textAlign='left';
+      g.fillStyle=CP.mute;g.font='500 12px '+FONT;g.fillText('concluído · traço escuro = previsto até hoje ('+Math.round(i.exp)+'%)',bx,by+38);
+      // linha do tempo até a linha de chegada
+      const tl=c.phases.filter(f=>!f.off&&f.n<=c.goAfter&&f.end!=null),s0=Math.min(c.S,T),e0=c.G,span=Math.max(1,e0-s0),tx=bx,tw=bwid,ty=y+166;
+      const px=n=>tx+tw*Math.max(0,Math.min(1,(n-s0)/span));
+      rr(g,tx,ty,tw,12,6,'#F1EFF8');
+      tl.forEach(f=>{const a=px(f.start),b=px(f.end+1),full=f.act.length&&f.nDone===f.act.length,lt=f.act.some(z=>z.late&&!z.done),run=f.act.some(z=>z.pct>0);
+        g.fillStyle=full?CP.ok:lt?CP.bad:run?CP.run:'#D7D3EA';g.globalAlpha=full||lt||run?1:.9;g.fillRect(a+1,ty,Math.max(2,b-a-2),12);g.globalAlpha=1});
+      const hx=px(T);g.fillStyle=CP.indigo;g.beginPath();g.moveTo(hx,ty-4);g.lineTo(hx-7,ty-16);g.lineTo(hx+7,ty-16);g.closePath();g.fill();
+      g.font='700 12px '+FONT;g.textAlign=hx-tx<20?'left':'center';g.fillText('Hoje',hx-(hx-tx<20?7:0),ty-22);g.textAlign='left';
+      flag(g,tx+tw+10,ty+10);g.fillStyle=CP.ink;g.font='700 12px '+FONT;g.textAlign='right';g.fillText('Go Live '+fD(c.G),X+Wd-30,ty+30);g.textAlign='left';
+      g.fillStyle=CP.mute;g.font='500 12px '+FONT;g.fillText('Início '+fD(s0),tx,ty+30);
+    });
+    const by2=top+list.length*(cardH+14)+6,half=(W-88-16)/2;
+    [[POS,'Pontos positivos',CP.ok,CP2.okBg,'#BFE5D0',44],[ATT,'Pontos de atenção',CP.bad,CP2.badBg,'#F5C6C2',44+half+16]].forEach(([arr,t,c,bg,bd,x])=>{
+      rr(g,x,by2,half,bh,18,bg,bd);g.fillStyle=c;g.font='800 17px '+FONT;g.fillText(t,x+22,by2+34);
+      g.fillStyle=CP.ink;g.font='500 15px '+FONT;let yy=by2+64;
+      arr.forEach(tx=>{g.fillStyle=c;g.beginPath();g.arc(x+26,yy-5,3.5,0,7);g.fill();g.fillStyle=CP.ink;wrap(g,tx,half-70,3).forEach(l=>{g.fillText(l,x+40,yy);yy+=21});yy+=8});
+    });
+    g.fillStyle='#8280A8';g.font='500 13px '+FONT;g.fillText('PMO I9XC · gerado em '+fFull(T)+' às '+new Date().toTimeString().slice(0,5),44,H-30);
+  },H,'Status Report - '+(multi?'Portfolio':list[0].p.name.replace(/[\\/:*?"<>|]/g,' ').trim())+' - '+iso(T)+'.jpg');
+}
+
 /* ---------- termo de abertura ---------- */
 const CANAL=[['voz','Voz'],['email','E-mail'],['chat','Chat'],['sms','SMS'],['whats','WhatsApp']];
 const RESP_OPT=[['inove','Responsabilidade Inove'],['cliente','Responsabilidade do cliente'],['nao','Não se aplica']],YN_OPT=[['sim','Sim'],['nao','Não']];
@@ -878,6 +949,8 @@ document.addEventListener('click',async e=>{
   else if(a==='ics'&&p)exportICS(id);
   else if(a==='img'&&p)exportImage(id);
   else if(a==='imgall')exportPortfolioImage();
+  else if(a==='rep'&&p)exportStatus([id]);
+  else if(a==='repall')exportStatus(Object.keys(P));
   else if(a==='project'&&p){const r=projectTasks(p);save(id);requestRender();toast(!r.changed?'O plano já cabe até o Go Live. Nada a ajustar.':r.ok?'Tarefas projetadas: '+r.notes.length+' ajustes para caber no Go Live':'Mesmo no mínimo não cabe: ajuste o Go Live ou desative etapas')}
   else if(a==='restore'&&p&&p.blk0){p.blk=p.blk0;p.pp=p.pp0||{};delete p.blk0;delete p.pp0;save(id);requestRender();toast('Durações restauradas')}
   else if(a==='xopen'){xform[id]=+b.dataset.n;openPh[id+':'+b.dataset.n]=true;requestRender()}
