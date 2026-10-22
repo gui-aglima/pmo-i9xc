@@ -491,19 +491,37 @@ function wizardHTML(){
   <div id="wz-prev"></div>
   <div class="acts"><button class="btn primary" id="w-create" data-act="wiz-create">Criar projeto</button></div></section>`;
 }
+/* ---------- projetar tarefas: encaixa o plano no Go Live ---------- */
+function projectTasks(p){
+  const T=todayN();p.blk=p.blk||{};p.pp=p.pp||{};
+  let c=build(p);const before=Object.assign({},p.blk),ppBefore=!!(p.pp[4]&&p.pp[8]);
+  if(c.S>=T)return{ok:true,changed:false,c,notes:[]};
+  if(!p.blk0){p.blk0=Object.assign({},p.blk);p.pp0=Object.assign({},p.pp)}
+  if(!(p.pp[4]&&p.pp[8])){p.pp[4]=true;p.pp[8]=true;c=build(p)}
+  let g=400;
+  while(c.S<T&&g--){
+    const cand=c.phases.filter(f=>!f.off&&f.n<=c.goAfter&&f.days>.5).sort((a,b)=>b.days-a.days)[0];
+    if(!cand)break;
+    p.blk[cand.n]=cand.days-.5;c=build(p);
+  }
+  const notes=[];
+  if(!ppBefore)notes.push('RH em paralelo com TI e Facilities em paralelo com Testes');
+  PH.forEach(f=>{const a=before[f.n]==null?2:before[f.n],b=p.blk[f.n]==null?2:p.blk[f.n];if(a!==b)notes.push(`${f.t}: ${fDias(a)} → ${fDias(b)}`)});
+  return{ok:c.S>=T,changed:true,c,notes};
+}
 function wizProject(){return {id:'tmp',name:W.name||'Novo projeto',goLive:W.goLive,goAfter:+W.goAfter,hol:W.hol,extras:W.extras.map((x,i)=>({id:'w'+i,phase:x.phase,title:x.title})),blk:Object.assign({},W.blk),termo:W.termo,ov:{},pp:{},created:todayN()}}
 function wizPreview(){
   const el=document.getElementById('wz-prev'),btn=document.getElementById('w-create');if(!el)return;
   if(!W.goLive){el.innerHTML=`<div class="alert info" style="margin-top:14px">Escolha a data do Go Live para ver as datas projetadas.</div>`;if(btn)btn.disabled=true;return}
-  const c=build(wizProject()),T=todayN(),short=c.S<T;
+  const pr=projectTasks(wizProject()),c=pr.c,T=todayN(),short=c.S<T;
   const gap=short?countBD(c.S,adjBD(T,c.H),c.H):0;
   const adj=c.G!==num(W.goLive)?`<div class="alert info"><span>A data cai em dia sem expediente. Go Live ajustado para <b>${fDW(c.G)}</b>.</span></div>`:'';
   el.innerHTML=`<div class="prev">
    <div class="kp hi"><div class="k">Início necessário</div><div class="v">${fDW(c.S)}</div><div class="s">${fDias(c.D)} dias úteis até o Go Live${c.Sh?' · começa à tarde':''}</div></div>
    <div class="kp"><div class="k">Go Live</div><div class="v">${fDW(c.G)}</div><div class="s">${c.act.filter(s=>s.phase<=c.goAfter).length} etapas antes, ${c.act.filter(s=>s.phase>c.goAfter).length} depois</div></div>
    <div class="kp"><div class="k">Etapas</div><div class="v">${c.act.length} ativas</div><div class="s">${c.nOff} desativadas · ${c.nCli} do cliente</div></div>
-   <div class="kp ${short?'bad':''}"><div class="k">Hoje</div><div class="v">${short?`${gap} ${plural(gap,'dia útil','dias úteis')} atrasado`:'No prazo'}</div><div class="s">${short?'o plano sequencial não cabe':'o plano sequencial cabe'}</div></div></div>${adj}${effectHTML(c)}
-   ${short?`<div class="alert warn"><span>Em sequência, o checklist precisaria ter começado em <b>${fDW(c.S)}</b>. Depois de criar, use <b>Compactar prazo</b> para rodar fases em paralelo (TI com RH, por exemplo) e ver quanto isso recupera.</span></div>`:''}`;
+   <div class="kp ${short?'bad':''}"><div class="k">Hoje</div><div class="v">${short?`${gap} ${plural(gap,'dia útil','dias úteis')} atrasado`:'No prazo'}</div><div class="s">${short?'mesmo compactado não cabe':pr.changed?'cabe depois de projetar':'o plano cabe'}</div></div></div>${adj}${effectHTML(c)}
+   ${pr.changed?`<div class="alert ${pr.ok?'info':'bad'}" style="display:block"><b>${pr.ok?'Projetei as tarefas para caber no Go Live.':'Mesmo no mínimo (meio dia por bloco) não cabe.'}</b> ${pr.ok?'Ao criar, o projeto já nasce com estes ajustes e você pode restaurar as durações depois:':'Faltam '+gap+' '+plural(gap,'dia útil','dias úteis')+'. Mude a data do Go Live ou desative etapas pelo termo.'}<ul class="rl">${pr.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`:''}`;
   if(btn)btn.disabled=!W.name.trim();
 }
 function setPath(o,path,v){const ks=path.split('.');while(ks.length>1)o=o[ks.shift()];o[ks[0]]=v}
@@ -566,17 +584,16 @@ function termoTab(c){const p=c.p;
   <section class="panel"><h2>Efeito do termo no checklist</h2>${effectHTML(c)||'<p class="hint">Todas as etapas estão ativas.</p>'}</section>`}
 function projectView(c){
   const p=c.p,id=p.id,T=todayN(),left=countBD(T,c.G,c.H),pd=pending(c),sy=SY[id];
-  const compact=!(p.pp&&p.pp[4]&&p.pp[8]);
   const warn=[];
-  if(c.overrun)warn.push(`<div class="alert bad"><span><b>O plano passa do Go Live.</b> A última etapa antes do Go Live termina em ${fDW(c.preEnd)}, e o Go Live é ${fDW(c.G)}. Reduza dias, rode fases em paralelo ou ajuste o Go Live.</span></div>`);
+  if(c.overrun)warn.push(`<div class="alert bad"><span><b>O plano passa do Go Live.</b> A última etapa antes do Go Live termina em ${fDW(c.preEnd)}, e o Go Live é ${fDW(c.G)}. Use <b>Projetar tarefas</b> para compactar ou ajuste o Go Live.</span></div>`);
   const stale=c.S<(p.created||T);
-  if(stale&&!c.overrun)warn.push(`<div class="alert warn"><span>Em sequência, o checklist precisaria ter começado em <b>${fDW(c.S)}</b>, antes da criação do projeto. As datas abaixo seguem esse cálculo. ${compact?'Use <b>Compactar prazo</b> para testar paralelismo.':''}</span></div>`);
+  if(stale&&!c.overrun)warn.push(`<div class="alert warn"><span>Em sequência, o checklist precisaria ter começado em <b>${fDW(c.S)}</b>, antes da criação do projeto. As datas abaixo seguem esse cálculo. Use <b>Projetar tarefas</b> para encaixar tudo até o Go Live.</span></div>`);
   if(c.nOff||c.nCli)warn.push(`<div class="alert info"><span>${c.nOff?`<b>${c.nOff} ${plural(c.nOff,'etapa desativada','etapas desativadas')}</b> (termo ou manual)`:''}${c.nOff&&c.nCli?' e ':''}${c.nCli?`<b>${c.nCli} em acompanhamento do cliente</b>`:''}. Os motivos aparecem na linha de cada etapa e na aba Termo de abertura.</span></div>`);
   const t=sy?`<div class="alert info"><span>${sy.run?`Enviando ao Agenda… ${sy.done}/${sy.total}`:esc(sy.msg)}</span></div>`:'';
   return `<button class="back" data-act="nav" data-v="portfolio">← Todos os projetos</button>
   <div class="hd"><div style="flex:1 1 360px"><div class="eyebrow">Checklist de implantação funcional</div><input class="nm" id="p-name" data-p="${id}" data-f="pname" value="${esc(p.name)}" aria-label="Nome do projeto"></div>
-   <div class="acts" style="margin:0">${window.HOSTED?`<button class="btn primary" data-act="ics" data-p="${id}">Baixar agenda (.ics)</button>`:a}
-   ${compact?`<button class="btn" data-act="compact" data-p="${id}" title="Sugestão: RH junto com TI, Facilities junto com Testes">Compactar prazo</button>`:`<button class="btn" data-act="uncompact" data-p="${id}">Voltar para sequência</button>`}
+   <div class="acts" style="margin:0">${window.HOSTED?`<button class="btn primary" data-act="ics" data-p="${id}">Baixar agenda (.ics)</button>`:`<button class="btn primary" data-act="sync" data-p="${id}" ${sy&&sy.run?'disabled':''}>Enviar ao Google Agenda${pd.n+pd.u+pd.d?` (${pd.n+pd.u+pd.d})`:''}</button>`}
+   <button class="btn" data-act="project" data-p="${id}" title="Encaixa todas as etapas entre hoje e o Go Live">Projetar tarefas</button>${p.blk0?`<button class="btn" data-act="restore" data-p="${id}">Restaurar durações</button>`:''}
    <button class="btn danger" data-act="del" data-p="${id}">${delAsk===id?'Confirmar exclusão':'Excluir'}</button></div></div>
   ${delAsk===id?`<div class="alert bad"><span>Isso apaga o projeto e remove as ${c.flat.filter(s=>s.o.ev&&s.o.ev!=='?').length} tarefas dele do Agenda. Clique de novo em <b>Confirmar exclusão</b> ou <button class="btn small ghost" data-act="delno">cancelar</button>.</span></div>`:''}
   <div class="prev" style="margin-top:0">
@@ -670,6 +687,7 @@ async function syncProject(id){
 function createProject(){
   const c=build(wizProject());const id=uid();
   P[id]={id,name:W.name.trim(),goLive:iso(c.G),goAfter:+W.goAfter,hol:W.hol,extras:W.extras.map((x,i)=>({id:id+i,phase:x.phase,title:x.title})),blk:Object.assign({},W.blk),termo:JSON.parse(JSON.stringify(W.termo)),ov:{},pp:{},created:todayN()};
+  projectTasks(P[id]);
   save(id);W=newW();wizOpen=null;view='p:'+id;requestRender();window.scrollTo(0,0);
 }
 
@@ -779,8 +797,8 @@ document.addEventListener('click',async e=>{
   else if(a==='done'&&p){setStatus(p,b.dataset.k,'Concluído');save(id);requestRender();lateCalUpdate(id,b.dataset.k);toast('Etapa concluída')}
   else if(a==='sync'&&p)syncProject(id);
   else if(a==='ics'&&p)exportICS(id);
-  else if(a==='compact'&&p){p.pp=p.pp||{};p.pp[4]=true;p.pp[8]=true;save(id);requestRender();toast('RH junto com TI, Facilities junto com Testes')}
-  else if(a==='uncompact'&&p){p.pp={};save(id);requestRender()}
+  else if(a==='project'&&p){const r=projectTasks(p);save(id);requestRender();toast(!r.changed?'O plano já cabe até o Go Live. Nada a ajustar.':r.ok?'Tarefas projetadas: '+r.notes.length+' ajustes para caber no Go Live':'Mesmo no mínimo não cabe: ajuste o Go Live ou desative etapas')}
+  else if(a==='restore'&&p&&p.blk0){p.blk=p.blk0;p.pp=p.pp0||{};delete p.blk0;delete p.pp0;save(id);requestRender();toast('Durações restauradas')}
   else if(a==='xopen'){xform[id]=+b.dataset.n;openPh[id+':'+b.dataset.n]=true;requestRender()}
   else if(a==='xclose'){delete xform[id];requestRender()}
   else if(a==='xadd'&&p){const t=document.getElementById('xf-t').value.trim();if(!t){toast('Dê um nome para a etapa');return}
@@ -824,7 +842,7 @@ document.addEventListener('change',e=>{
   if(!p)return;
   if(d.f==='pname'){p.name=t.value.trim()||p.name;save(p.id);requestRender();return}
   if(d.f==='blk'){p.blk=p.blk||{};p.blk[d.n]=Math.max(.5,Math.round((parseFloat(String(t.value).replace(',','.'))||2)*2)/2);save(p.id);requestRender();return}
-  if(d.f==='golive'){if(t.value){p.goLive=t.value;save(p.id);requestRender()}return}
+  if(d.f==='golive'){if(t.value){p.goLive=t.value;const r=projectTasks(p);save(p.id);requestRender();if(r.changed)toast(r.ok?'Go Live alterado: projetei as tarefas para caber':'Go Live alterado: mesmo no mínimo não cabe')}return}
   if(!d.k)return;
   const o=ovOf(p,d.k),c0=build(p),st0=c0.flat.find(s=>s.key===d.k);
   if(d.f==='owner')o.owner=t.value.trim();
