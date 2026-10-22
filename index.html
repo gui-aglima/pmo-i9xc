@@ -155,6 +155,7 @@ textarea{background:var(--surface);border:1.5px solid var(--line2);border-radius
 #login h1{margin:0;color:var(--indigo);font-size:22px}#login p{margin:0;color:var(--muted);font-size:14px}
 #login label{display:grid;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
 #login .er{color:#b3261e;font-size:13px;min-height:18px}
+.rec{width:200px;min-width:0}
 .tgrid{padding-top:10px;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr))}
 .tgrid .f{min-width:0}
 .tgrid input,.tgrid select,.tgrid textarea{min-width:0}
@@ -462,7 +463,7 @@ function projCard(c){
 function portfolioView(all){
   const open=wizOpen===null?all.length===0:wizOpen;
   let h=`<div class="hd"><div><div class="eyebrow">Project Owner</div><h1>Projetos de implantação</h1><p>${all.length?`${all.length} ${plural(all.length,'projeto','projetos')} em andamento. Escolha um para ver as etapas ou crie outro.`:'Informe o Go Live e o artefato projeta todas as datas do checklist, para trás, em dias úteis.'}</p></div>
-    ${all.length?`<button class="btn primary" data-act="wiz">${open?'Fechar':'+ Novo projeto'}</button>`:''}</div>`;
+    <div class="acts" style="margin:0">${all.length?`<button class="btn" data-act="imgall">Imagem do portfólio</button><button class="btn primary" data-act="wiz">${open?'Fechar':'+ Novo projeto'}</button>`:''}</div></div>`;
   if(open)h+=wizardHTML();
   if(all.length)h+=`<div class="cards">${all.map(projCard).join('')}</div>`;
   return h;
@@ -593,7 +594,7 @@ function projectView(c){
   return `<button class="back" data-act="nav" data-v="portfolio">← Todos os projetos</button>
   <div class="hd"><div style="flex:1 1 360px"><div class="eyebrow">Checklist de implantação funcional</div><input class="nm" id="p-name" data-p="${id}" data-f="pname" value="${esc(p.name)}" aria-label="Nome do projeto"></div>
    <div class="acts" style="margin:0">${window.HOSTED?`<button class="btn primary" data-act="ics" data-p="${id}">Baixar agenda (.ics)</button>`:`<button class="btn primary" data-act="sync" data-p="${id}" ${sy&&sy.run?'disabled':''}>Enviar ao Google Agenda${pd.n+pd.u+pd.d?` (${pd.n+pd.u+pd.d})`:''}</button>`}
-   <button class="btn" data-act="project" data-p="${id}" title="Encaixa todas as etapas entre hoje e o Go Live">Projetar tarefas</button>${p.blk0?`<button class="btn" data-act="restore" data-p="${id}">Restaurar durações</button>`:''}
+   <button class="btn" data-act="project" data-p="${id}" title="Encaixa todas as etapas entre hoje e o Go Live">Projetar tarefas</button><input type="text" class="rec" data-p="${id}" data-f="recado" value="${esc(p.recado||'')}" placeholder="Recado do dia (opcional)" aria-label="Recado para a imagem" maxlength="160"><button class="btn" data-act="img" data-p="${id}">Gerar imagem</button>${p.blk0?`<button class="btn" data-act="restore" data-p="${id}">Restaurar durações</button>`:''}
    <button class="btn danger" data-act="del" data-p="${id}">${delAsk===id?'Confirmar exclusão':'Excluir'}</button></div></div>
   ${delAsk===id?`<div class="alert bad"><span>Isso apaga o projeto e remove as ${c.flat.filter(s=>s.o.ev&&s.o.ev!=='?').length} tarefas dele do Agenda. Clique de novo em <b>Confirmar exclusão</b> ou <button class="btn small ghost" data-act="delno">cancelar</button>.</span></div>`:''}
   <div class="prev" style="margin-top:0">
@@ -689,6 +690,84 @@ function createProject(){
   P[id]={id,name:W.name.trim(),goLive:iso(c.G),goAfter:+W.goAfter,hol:W.hol,extras:W.extras.map((x,i)=>({id:id+i,phase:x.phase,title:x.title})),blk:Object.assign({},W.blk),termo:JSON.parse(JSON.stringify(W.termo)),ov:{},pp:{},created:todayN()};
   projectTasks(P[id]);
   save(id);W=newW();wizOpen=null;view='p:'+id;requestRender();window.scrollTo(0,0);
+}
+
+/* ---------- imagem do consolidado (JPG) ---------- */
+const FONT='Montserrat,"Open Sans",Arial,sans-serif',CP={ink:'#1B1A3A',mute:'#6B6890',indigo:'#2B1F7A',amber:'#FFB81C',line:'#E6E3F0',track:'#ECEAF5',ok:'#1F9D63',run:'#2F5BEA',bad:'#D9534F',idle:'#B9B6D0'};
+function rr(g,x,y,w,h,r,fill,stroke){g.beginPath();g.roundRect(x,y,w,h,r);if(fill){g.fillStyle=fill;g.fill()}if(stroke){g.strokeStyle=stroke;g.lineWidth=2;g.stroke()}}
+function fit(g,t,w){t=String(t);if(g.measureText(t).width<=w)return t;while(t.length>1&&g.measureText(t+'…').width>w)t=t.slice(0,-1);return t+'…'}
+function wrap(g,t,w,maxL){const words=String(t).split(/\s+/),L=[];let cur='';words.forEach(x=>{const n=cur?cur+' '+x:x;if(g.measureText(n).width>w&&cur){L.push(cur);cur=x}else cur=n});if(cur)L.push(cur);if(L.length>maxL){L.length=maxL;L[maxL-1]=fit(g,L[maxL-1]+'…',w)}return L}
+const colFor=(pct,late)=>late?CP.bad:pct>=100?CP.ok:pct>0?CP.run:CP.idle;
+function loadRing(){return new Promise(res=>{const i=document.querySelector('.brand img');if(!i){res(null);return}const m=new Image();m.onload=()=>res(m);m.onerror=()=>res(null);m.src=i.src})}
+async function canvasOut(draw,H,filename){
+  try{await document.fonts.load('700 20px Montserrat');await document.fonts.load('400 20px Montserrat')}catch(e){}
+  const ring=await loadRing(),W=1080,S=2,cv=document.createElement('canvas');cv.width=W*S;cv.height=H*S;
+  const g=cv.getContext('2d');g.scale(S,S);g.fillStyle='#F4F3F9';g.fillRect(0,0,W,H);draw(g,W,ring);
+  const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.92));const dl=await use('downloads');
+  if(!dl){toast('Download indisponível nesta visualização');return}
+  try{await dl.save({filename,data:blob});toast('Imagem salva')}catch(e){if(!e||e.code!=='declined')toast('Não consegui salvar a imagem')}
+}
+function head(g,ring,small,title){
+  if(ring)g.drawImage(ring,44,40,54,54);
+  g.fillStyle=CP.mute;g.font='600 14px '+FONT;g.fillText(small.toUpperCase(),116,58);
+  g.fillStyle=CP.indigo;g.font='800 28px '+FONT;g.fillText(fit(g,title,860),116,92);
+}
+function kpi(g,x,y,w,l,v,sub,dark,vc){
+  rr(g,x,y,w,128,18,dark?CP.indigo:'#fff',dark?null:CP.line);
+  g.fillStyle=dark?'#CFC9F5':CP.mute;g.font='700 13px '+FONT;g.fillText(l.toUpperCase(),x+22,y+34);
+  g.fillStyle=vc||(dark?CP.amber:CP.ink);g.font='800 38px '+FONT;g.fillText(v,x+22,y+78);
+  g.fillStyle=dark?'#CFC9F5':CP.mute;g.font='500 14px '+FONT;g.fillText(fit(g,sub,w-44),x+22,y+106);
+}
+async function exportImage(id){
+  const p=P[id];if(!p)return;const c=build(p),T=todayN(),left=countBD(T,c.G,c.H);
+  const phs=c.phases.filter(f=>!f.off),late=c.act.filter(s=>s.late&&!s.done);
+  const nxt=c.act.filter(s=>!s.done&&!s.late).sort((a,b)=>a.end-b.end).slice(0,3);
+  const note=(p.recado||'').trim(),rowH=70,top=300;
+  const lateTxt=late.length?late.slice(0,4).map(s=>s.code+' '+s.base+' ('+fD(s.end)+')').join(' · ')+(late.length>4?' · +'+(late.length-4)+'…':''):'Nenhuma etapa atrasada.';
+  const nxtTxt=note||(nxt.length?nxt.map(s=>s.code+' '+s.base+' ('+fD(s.end)+')').join(' · '):'Sem etapas pendentes.');
+  const H=top+phs.length*rowH+40+150+60;
+  await canvasOut((g,W,ring)=>{
+    head(g,ring,'Checklist de implantação · consolidado',p.name);
+    const w=(W-88-32)/3;
+    kpi(g,44,126,w*1.1,'Go Live',fFull(c.G),(left>0?left+' '+plural(left,'dia útil','dias úteis')+' restantes':left===0?'é hoje':'já passou'),true);
+    kpi(g,44+w*1.1+16,126,w*0.95,'Progresso geral',Math.round(c.prog)+'%',c.nDone+' de '+c.act.length+' etapas concluídas');
+    kpi(g,44+w*2.05+32,126,W-88-w*2.05-32,'Atenção',String(c.nLate),(c.nLate===1?'etapa atrasada':'etapas atrasadas')+(c.nOff?' · '+c.nOff+' desativadas':''),false,c.nLate?CP.bad:CP.ok);
+    rr(g,44,274,W-88,phs.length*rowH+40,20,'#fff',CP.line);
+    phs.forEach((f,i)=>{
+      const y=294+i*rowH,pct=Math.round(f.pct),isLate=f.act.some(s=>s.late&&!s.done),col=colFor(pct,isLate);
+      g.fillStyle=CP.indigo;g.beginPath();g.arc(88,y+30,17,0,7);g.fill();g.fillStyle='#fff';g.font='700 15px '+FONT;g.textAlign='center';g.fillText(String(f.n),88,y+35.5);g.textAlign='left';
+      g.fillStyle=CP.ink;g.font='600 17px '+FONT;g.fillText(fit(g,f.t,560),118,y+24);
+      g.fillStyle=CP.mute;g.font='500 14px '+FONT;g.textAlign='right';g.fillText(f.nDone+'/'+f.act.length+' etapas',W-160,y+24);g.textAlign='left';
+      rr(g,118,y+36,W-118-160-16,12,6,CP.track);if(pct>0)rr(g,118,y+36,(W-118-160-16)*pct/100,12,6,col);
+      g.fillStyle=col;g.font='800 24px '+FONT;g.textAlign='right';g.fillText(pct+'%',W-68,y+50);g.textAlign='left';
+      if(i<phs.length-1){g.fillStyle='#EFEDF6';g.fillRect(70,y+rowH-6,W-140,1)}
+    });
+    const by=top+phs.length*rowH+36,bw=(W-88-16)/2;
+    rr(g,44,by,bw,150,16,late.length?'#FDEDEC':'#EAF7F0',late.length?'#F5C6C2':'#BFE5D0');
+    g.fillStyle=late.length?'#B3261E':CP.ok;g.font='700 15px '+FONT;g.fillText('Atrasadas',64,by+32);
+    g.fillStyle=CP.ink;g.font='500 15px '+FONT;wrap(g,lateTxt,bw-40,4).forEach((l,k)=>g.fillText(l,64,by+58+k*22));
+    rr(g,44+bw+16,by,bw,150,16,'#fff',CP.line);
+    g.fillStyle=CP.indigo;g.font='700 15px '+FONT;g.fillText(note?'Recado':'Próximos passos',64+bw+16,by+32);
+    g.fillStyle=CP.ink;g.font='500 15px '+FONT;wrap(g,nxtTxt,bw-40,4).forEach((l,k)=>g.fillText(l,64+bw+16,by+58+k*22));
+    g.fillStyle='#8280A8';g.font='500 13px '+FONT;g.fillText('PMO I9XC · atualizado em '+fFull(T)+' às '+new Date().toTimeString().slice(0,5),44,H-26);
+  },H,'Consolidado - '+p.name.replace(/[\\/:*?"<>|]/g,' ').trim()+' - '+iso(T)+'.jpg');
+}
+async function exportPortfolioImage(){
+  const T=todayN(),all=Object.values(P).sort((a,b)=>(a.created||0)-(b.created||0)).map(build);if(!all.length)return;
+  const rowH=84,H=150+all.length*rowH+70;
+  await canvasOut((g,W,ring)=>{
+    head(g,ring,'Checklist de implantação · portfólio','Projetos em andamento');
+    rr(g,44,120,W-88,all.length*rowH+20,20,'#fff',CP.line);
+    all.forEach((c,i)=>{
+      const y=130+i*rowH,pct=Math.round(c.prog),col=colFor(pct,c.nLate>0),left=countBD(T,c.G,c.H);
+      g.fillStyle=CP.ink;g.font='700 18px '+FONT;g.fillText(fit(g,c.p.name,520),70,y+28);
+      g.fillStyle=CP.mute;g.font='500 14px '+FONT;g.fillText('Go Live '+fFull(c.G)+' · '+(left>=0?left+' '+plural(left,'dia útil','dias úteis'):'passou')+' · '+c.nDone+'/'+c.act.length+' etapas'+(c.nLate?' · '+c.nLate+' atrasadas':''),70,y+52);
+      rr(g,640,y+22,260,12,6,CP.track);if(pct>0)rr(g,640,y+22,260*pct/100,12,6,col);
+      g.fillStyle=col;g.font='800 26px '+FONT;g.textAlign='right';g.fillText(pct+'%',W-68,y+46);g.textAlign='left';
+      if(i<all.length-1){g.fillStyle='#EFEDF6';g.fillRect(70,y+rowH-10,W-140,1)}
+    });
+    g.fillStyle='#8280A8';g.font='500 13px '+FONT;g.fillText('PMO I9XC · atualizado em '+fFull(T)+' às '+new Date().toTimeString().slice(0,5),44,H-26);
+  },H,'Consolidado do portfólio - '+iso(T)+'.jpg');
 }
 
 /* ---------- termo de abertura ---------- */
@@ -797,6 +876,8 @@ document.addEventListener('click',async e=>{
   else if(a==='done'&&p){setStatus(p,b.dataset.k,'Concluído');save(id);requestRender();lateCalUpdate(id,b.dataset.k);toast('Etapa concluída')}
   else if(a==='sync'&&p)syncProject(id);
   else if(a==='ics'&&p)exportICS(id);
+  else if(a==='img'&&p)exportImage(id);
+  else if(a==='imgall')exportPortfolioImage();
   else if(a==='project'&&p){const r=projectTasks(p);save(id);requestRender();toast(!r.changed?'O plano já cabe até o Go Live. Nada a ajustar.':r.ok?'Tarefas projetadas: '+r.notes.length+' ajustes para caber no Go Live':'Mesmo no mínimo não cabe: ajuste o Go Live ou desative etapas')}
   else if(a==='restore'&&p&&p.blk0){p.blk=p.blk0;p.pp=p.pp0||{};delete p.blk0;delete p.pp0;save(id);requestRender();toast('Durações restauradas')}
   else if(a==='xopen'){xform[id]=+b.dataset.n;openPh[id+':'+b.dataset.n]=true;requestRender()}
@@ -842,6 +923,7 @@ document.addEventListener('change',e=>{
   if(!p)return;
   if(d.f==='pname'){p.name=t.value.trim()||p.name;save(p.id);requestRender();return}
   if(d.f==='blk'){p.blk=p.blk||{};p.blk[d.n]=Math.max(.5,Math.round((parseFloat(String(t.value).replace(',','.'))||2)*2)/2);save(p.id);requestRender();return}
+  if(d.f==='recado'){p.recado=t.value.trim();save(p.id);return}
   if(d.f==='golive'){if(t.value){p.goLive=t.value;const r=projectTasks(p);save(p.id);requestRender();if(r.changed)toast(r.ok?'Go Live alterado: projetei as tarefas para caber':'Go Live alterado: mesmo no mínimo não cabe')}return}
   if(!d.k)return;
   const o=ovOf(p,d.k),c0=build(p),st0=c0.flat.find(s=>s.key===d.k);
