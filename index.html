@@ -161,6 +161,7 @@ input.rec{width:220px;min-width:0}
 .btabs button[aria-selected="true"]{background:var(--purple);border-color:var(--purple);color:#fff}
 .btabs button[aria-selected="true"] .pc{color:#fff!important}
 .btabs button.off{opacity:.55}.btabs button.off .tn{text-decoration:line-through}
+.btabs b.lt{background:var(--bad,#D9534F);color:#fff;border-radius:50%;width:16px;height:16px;display:grid;place-items:center;font-size:11px}
 .btabs i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}.btabs .tn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btabs .pc{font-weight:800}
 .ov{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));margin-top:10px}
 .ovc{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;cursor:pointer;color:var(--ink);font:inherit}
@@ -403,7 +404,7 @@ function build(p){
 const fDias=d=>String(d).replace('.',',');
 //</core>
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const PCOL=['#402BFF','#47ADFF','#9533FF','#FF941F','#2FD13B','#FF10BD','#FF4058','#6349AA','#1E8F5E','#FAA33A'];
+const PCOL=['#402BFF','#47ADFF','#9533FF','#FF941F','#2FD13B','#FF10BD','#FF4058','#00A8A8','#8D6E63','#37474F'];
 const SERVER='Google Calendar';
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const use=n=>(window.claude&&window.claude.use)?window.claude.use(n):Promise.resolve(null);
@@ -587,9 +588,9 @@ function phaseHTML(c,ph,force){
 }
 function sigOf(p,st){return [iso(st.end),st.done?1:0,st.code,st.title,p.name].join('|')}
 function pending(c){let n=0,u=0,d=0;c.flat.forEach(st=>{const e=st.o.ev;if(st.off){if(e&&e!=='?')d++}else if(!e){if(!st.done)n++}else if(e!=='?'&&st.o.evSig!==sigOf(c.p,st))u++});return{n,u,d}}
-const phCol=f=>f.off?CP.idle:f.act.some(z=>z.late&&!z.done)?CP.bad:f.act.length&&f.nDone===f.act.length?CP.ok:f.pct>0?CP.run:CP.idle;
+const phCol=f=>f.off?CP.idle:PCOL[f.n-1];const phLate=f=>!f.off&&f.act.some(z=>z.late&&!z.done);
 function checkTab(c){const id=c.p.id,sel=btab[id]||'all',ph=sel==='all'?null:c.phases.find(f=>f.n===+sel);
-  const tabs=`<div class="btabs" role="tablist" aria-label="Partes da operação"><button role="tab" data-act="btab" data-v="all" data-p="${id}" aria-selected="${!ph}"><b>Visão geral</b><span class="pc" style="color:${c.prog>=100?CP.ok:CP.run}">${Math.round(c.prog)}%</span></button>${c.phases.map(f=>`<button role="tab" data-act="btab" data-v="${f.n}" data-p="${id}" aria-selected="${ph&&ph.n===f.n}" class="${f.off?'off':''}"><i style="background:${phCol(f)}"></i><span class="tn">${f.n}. ${esc(f.t)}</span><span class="pc" style="color:${phCol(f)}">${f.off?'—':Math.round(f.pct)+'%'}</span></button>`).join('')}</div>`;
+  const tabs=`<div class="btabs" role="tablist" aria-label="Partes da operação"><button role="tab" data-act="btab" data-v="all" data-p="${id}" aria-selected="${!ph}"><b>Visão geral</b><span class="pc" style="color:${c.prog>=100?CP.ok:CP.run}">${Math.round(c.prog)}%</span></button>${c.phases.map(f=>`<button role="tab" data-act="btab" data-v="${f.n}" data-p="${id}" aria-selected="${ph&&ph.n===f.n}" class="${f.off?'off':''}"><i style="background:${phCol(f)}"></i><span class="tn">${f.n}. ${esc(f.t)}</span><span class="pc" style="color:${phCol(f)}">${f.off?'—':Math.round(f.pct)+'%'}</span>${phLate(f)?'<b class="lt" title="Etapa atrasada">!</b>':''}</button>`).join('')}</div>`;
   if(ph)return tabs+phaseHTML(c,ph,true);
   const cards=`<div class="ov">${c.phases.map(f=>`<button class="ovc" data-act="btab" data-v="${f.n}" data-p="${id}"><div class="oh"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><b>${esc(f.t)}</b><span class="pc" style="color:${phCol(f)}">${f.off?'desativado':Math.round(f.pct)+'%'}</span></div><div class="ob"><i style="width:${f.off?0:f.pct.toFixed(0)}%;background:${phCol(f)}"></i></div><small>${f.off?'sem prazo':f.nDone+'/'+f.act.length+' etapas · até '+fD(f.end)}${f.act.some(z=>z.late&&!z.done)?' · <span style="color:'+CP.bad+'">atrasada</span>':''}</small></button>`).join('')}</div>`;
   return tabs+`<section class="panel"><h2>Evolução por parte da operação</h2>${cards}</section>
@@ -843,15 +844,15 @@ async function exportStatus(ids){
       const cw=(Wd-60)/5,all=c.phases;
       all.forEach((f,q)=>{const cx=bx+(q%5)*cw,cy=y+160+Math.floor(q/5)*52,pc=f.off?0:Math.round(f.pct),cl=phCol(f),wd=cw-14;
         g.fillStyle=f.off?CP.idle:CP.ink;g.font='600 12px '+FONT;g.fillText(fit(g,f.n+'. '+f.t,wd-40),cx,cy+12);
-        g.fillStyle=cl;g.font='800 13px '+FONT;g.textAlign='right';g.fillText(f.off?'—':pc+'%',cx+wd,cy+12);g.textAlign='left';
+        g.fillStyle=cl;g.font='800 13px '+FONT;g.textAlign='right';g.fillText(f.off?'—':pc+'%',cx+wd,cy+12);g.textAlign='left';if(phLate(f)){g.fillStyle=CP.bad;g.beginPath();g.arc(cx+wd-44,cy+7,6,0,7);g.fill();g.fillStyle='#fff';g.font='800 10px '+FONT;g.textAlign='center';g.fillText('!',cx+wd-44,cy+11);g.textAlign='left'}
         rr(g,cx,cy+22,wd,9,5,CP.track);if(pc>0)rr(g,cx,cy+22,Math.max(9,wd*pc/100),9,5,cl);
         if(f.off){g.fillStyle=CP.idle;g.font='500 11px '+FONT;g.fillText('desativado',cx,cy+44)}});
       // linha do tempo até a linha de chegada
       const tl=c.phases.filter(f=>!f.off&&f.n<=c.goAfter&&f.end!=null),s0=Math.min(c.S,T),e0=c.G,span=Math.max(1,e0-s0),tx=bx,tw=bwid,ty=y+286;
       const px=n=>tx+tw*Math.max(0,Math.min(1,(n-s0)/span));
       rr(g,tx,ty,tw,12,6,'#F1EFF8');
-      tl.forEach(f=>{const a=px(f.start),b=px(f.end+1),full=f.act.length&&f.nDone===f.act.length,lt=f.act.some(z=>z.late&&!z.done),run=f.act.some(z=>z.pct>0);
-        g.fillStyle=full?CP.ok:lt?CP.bad:run?CP.run:'#D7D3EA';g.globalAlpha=full||lt||run?1:.9;g.fillRect(a+1,ty,Math.max(2,b-a-2),12);g.globalAlpha=1});
+      tl.forEach(f=>{const a=px(f.start),b=px(f.end+1),w=Math.max(2,b-a-2),lt=phLate(f);
+        g.fillStyle=PCOL[f.n-1];g.globalAlpha=.25;g.fillRect(a+1,ty,w,12);g.globalAlpha=1;g.fillRect(a+1,ty,w*Math.min(100,f.pct)/100,12);if(lt){g.fillStyle=CP.bad;g.fillRect(a+1,ty-4,w,3)}});
       const hx=px(T);g.fillStyle=CP.indigo;g.beginPath();g.moveTo(hx,ty-4);g.lineTo(hx-7,ty-16);g.lineTo(hx+7,ty-16);g.closePath();g.fill();
       g.font='700 12px '+FONT;g.textAlign=hx-tx<20?'left':'center';g.fillText('Hoje',hx-(hx-tx<20?7:0),ty-22);g.textAlign='left';
       flag(g,tx+tw+10,ty+10);g.fillStyle=CP.ink;g.font='700 12px '+FONT;g.textAlign='right';g.fillText('Go Live '+fD(c.G),X+Wd-30,ty+30);g.textAlign='left';
