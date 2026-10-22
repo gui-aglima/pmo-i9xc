@@ -155,7 +155,20 @@ textarea{background:var(--surface);border:1.5px solid var(--line2);border-radius
 #login h1{margin:0;color:var(--indigo);font-size:22px}#login p{margin:0;color:var(--muted);font-size:14px}
 #login label{display:grid;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
 #login .er{color:#b3261e;font-size:13px;min-height:18px}
-.rec{width:200px;min-width:0}
+input.rec{width:220px;min-width:0}
+.btabs{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px;margin:0 0 6px;scrollbar-width:thin}
+.btabs button{flex:0 0 auto;display:flex;align-items:center;gap:7px;border:1.5px solid var(--line2);background:var(--surface);color:var(--ink);border-radius:12px;padding:8px 12px;cursor:pointer;font:inherit;font-size:13px;max-width:240px}
+.btabs button[aria-selected="true"]{background:var(--purple);border-color:var(--purple);color:#fff}
+.btabs button[aria-selected="true"] .pc{color:#fff!important}
+.btabs button.off{opacity:.55}.btabs button.off .tn{text-decoration:line-through}
+.btabs i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}.btabs .tn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btabs .pc{font-weight:800}
+.ov{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));margin-top:10px}
+.ovc{text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;cursor:pointer;color:var(--ink);font:inherit}
+.ovc:hover{border-color:var(--purple)}
+.ovc .oh{display:flex;align-items:center;gap:8px}.ovc .oh b{flex:1;font-size:14px}.ovc .pc{font-weight:800}
+.ovc .n{width:24px;height:24px;border-radius:50%;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700}
+.ovc .ob{height:9px;border-radius:6px;background:var(--line);margin:9px 0 6px;overflow:hidden}.ovc .ob i{display:block;height:100%;border-radius:6px}
+.ovc small{color:var(--muted);font-size:12px}
 .tgrid{padding-top:10px;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr))}
 .tgrid .f{min-width:0}
 .tgrid input,.tgrid select,.tgrid textarea{min-width:0}
@@ -399,7 +412,7 @@ let db=null,mcpNs=null,loaded=false,P={},view='portfolio',syncUI='ok',syncMsg=''
 const dirty=new Set(),timers={},openPh={},xform={},SY={};
 let W=newW();
 function newW(){const b={};for(let i=1;i<=10;i++)b[i]=2;return {name:'',goLive:'',goAfter:9,hol:'sp',extra:'nao',extras:[],blk:b,termo:{},nx:{title:'',phase:3}}}
-let wizOpen=null,delAsk=null;const ptab={},secOpen={};
+let wizOpen=null,delAsk=null;const ptab={},btab={},secOpen={};
 
 /* ---------- persistência ---------- */
 let chain=Promise.resolve();
@@ -558,13 +571,14 @@ function stepRow(c,st){
    <td><input type="text" ${d('notes')} value="${esc(st.o.notes||'')}" placeholder="Observações" aria-label="Observações ${st.code}" style="min-width:150px"></td>
    <td style="white-space:nowrap"><button class="icon-btn" title="Desativar etapa" aria-label="Desativar etapa ${st.code}" data-act="force" data-v="off" data-p="${id}" data-k="${st.key}">⊘</button>${st.extra?` <button class="icon-btn" aria-label="Remover etapa extra" data-act="xdel" data-p="${id}" data-x="${st.xid}">✕</button>`:''}</td></tr>`;
 }
-function phaseHTML(c,ph){
+function phaseHTML(c,ph,force){
   const p=c.p,id=p.id,k=id+':'+ph.n;
-  let open=openPh[k];if(open===undefined){const firstPending=c.phases.find(f=>!f.off&&f.nDone<f.act.length);open=firstPending?firstPending.n===ph.n:false}
+  let open=force||openPh[k];if(open===undefined){const firstPending=c.phases.find(f=>!f.off&&f.nDone<f.act.length);open=firstPending?firstPending.n===ph.n:false}
   const col=PCOL[(ph.n-1)%10],xf=xform[id]===ph.n;
   return `<details class="ph" data-ph="${k}" ${open?'open':''}><summary><span class="n" style="background:${col}">${ph.n}</span><span class="t">${esc(ph.t)}${ph.post?' <span class="tag" style="background:var(--amber);color:#09092D">PÓS GO LIVE</span>':''}${ph.off?' <span class="tag off">BLOCO DESATIVADO</span>':''}</span>
    <span class="meta"><span class="num">${ph.nDone}/${ph.act.length}</span><span class="bar"><i style="width:${ph.pct.toFixed(0)}%"></i></span><span class="num">${ph.off?'sem prazo':fD(ph.start)+(ph.startH?' (tarde)':'')+' → '+fD(ph.end)+(ph.endMid?' (manhã)':'')}</span></span><span class="chev">▾</span></summary>
    <div class="pb"><div class="opts"><span class="pill mute">${ph.off?'Bloco desativado: não ocupa prazo':'Bloco de '+fDias(ph.days)+' '+(ph.days===1?'dia útil':'dias úteis')}</span>
+   ${force?`<label>Duração (dias úteis) <input id="pb${ph.n}" type="number" min="0.5" step="0.5" style="width:84px" data-p="${id}" data-f="blk" data-n="${ph.n}" value="${ph.days}"></label>`:''}
    ${ph.n>1?`<label><input type="checkbox" data-act="pp" data-p="${id}" data-n="${ph.n}" ${ph.pp?'checked':''}> Roda junto com a fase anterior</label>`:''}
    <button class="btn small" data-act="xopen" data-p="${id}" data-n="${ph.n}">+ Etapa extra</button></div>
    <div class="tw"><table class="t"><thead><tr><th>Etapa</th><th>Responsável</th><th>Status</th><th>%</th><th>Prazo</th><th>Situação</th><th>Agenda</th><th>Observações</th><th></th></tr></thead><tbody>${ph.steps.map(s=>stepRow(c,s)).join('')}</tbody></table></div>
@@ -573,11 +587,15 @@ function phaseHTML(c,ph){
 }
 function sigOf(p,st){return [iso(st.end),st.done?1:0,st.code,st.title,p.name].join('|')}
 function pending(c){let n=0,u=0,d=0;c.flat.forEach(st=>{const e=st.o.ev;if(st.off){if(e&&e!=='?')d++}else if(!e){if(!st.done)n++}else if(e!=='?'&&st.o.evSig!==sigOf(c.p,st))u++});return{n,u,d}}
-function checkTab(c){const id=c.p.id;
-  return `<section class="panel"><h2>Linha do tempo</h2>${timeline(c)}</section>
+const phCol=f=>f.off?CP.idle:f.act.some(z=>z.late&&!z.done)?CP.bad:f.act.length&&f.nDone===f.act.length?CP.ok:f.pct>0?CP.run:CP.idle;
+function checkTab(c){const id=c.p.id,sel=btab[id]||'all',ph=sel==='all'?null:c.phases.find(f=>f.n===+sel);
+  const tabs=`<div class="btabs" role="tablist" aria-label="Partes da operação"><button role="tab" data-act="btab" data-v="all" data-p="${id}" aria-selected="${!ph}"><b>Visão geral</b><span class="pc" style="color:${c.prog>=100?CP.ok:CP.run}">${Math.round(c.prog)}%</span></button>${c.phases.map(f=>`<button role="tab" data-act="btab" data-v="${f.n}" data-p="${id}" aria-selected="${ph&&ph.n===f.n}" class="${f.off?'off':''}"><i style="background:${phCol(f)}"></i><span class="tn">${f.n}. ${esc(f.t)}</span><span class="pc" style="color:${phCol(f)}">${f.off?'—':Math.round(f.pct)+'%'}</span></button>`).join('')}</div>`;
+  if(ph)return tabs+phaseHTML(c,ph,true);
+  const cards=`<div class="ov">${c.phases.map(f=>`<button class="ovc" data-act="btab" data-v="${f.n}" data-p="${id}"><div class="oh"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><b>${esc(f.t)}</b><span class="pc" style="color:${phCol(f)}">${f.off?'desativado':Math.round(f.pct)+'%'}</span></div><div class="ob"><i style="width:${f.off?0:f.pct.toFixed(0)}%;background:${phCol(f)}"></i></div><small>${f.off?'sem prazo':f.nDone+'/'+f.act.length+' etapas · até '+fD(f.end)}${f.act.some(z=>z.late&&!z.done)?' · <span style="color:'+CP.bad+'">atrasada</span>':''}</small></button>`).join('')}</div>`;
+  return tabs+`<section class="panel"><h2>Evolução por parte da operação</h2>${cards}</section>
+  <section class="panel"><h2>Linha do tempo</h2>${timeline(c)}</section>
   <section class="panel"><h2>Duração por bloco</h2><p class="hint" style="margin:4px 0 10px">Dias úteis de cada fase, aceita meio dia. Todas as etapas do bloco vencem no fim da janela. Mudou aqui, as datas e o Agenda (botão "Atualizar") acompanham.</p>
-   <div class="blks">${c.phases.map(f=>`<div class="bk"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><label for="pb${f.n}">${esc(f.t)}<small>${f.off?'desativado pelo termo':fD(f.start)+(f.startH?' tarde':'')+' → '+fD(f.end)+(f.endMid?' manhã':'')+(f.pp?' · junto com a anterior':'')}</small></label><input id="pb${f.n}" type="number" min="0.5" step="0.5" data-p="${id}" data-f="blk" data-n="${f.n}" value="${f.days}"></div>`).join('')}</div></section>
-  ${c.phases.map(f=>phaseHTML(c,f)).join('')}`}
+   <div class="blks">${c.phases.map(f=>`<div class="bk"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><label for="pb${f.n}">${esc(f.t)}<small>${f.off?'desativado pelo termo':fD(f.start)+(f.startH?' tarde':'')+' → '+fD(f.end)+(f.endMid?' manhã':'')+(f.pp?' · junto com a anterior':'')}</small></label><input id="pb${f.n}" type="number" min="0.5" step="0.5" data-p="${id}" data-f="blk" data-n="${f.n}" value="${f.days}"></div>`).join('')}</div></section>`}
 function termoTab(c){const p=c.p;
   if(!p.termo)return `<section class="panel"><h2>Termo de abertura de projeto</h2><p class="hint">Este projeto foi criado antes do termo existir no PMO. Crie o termo para as respostas passarem a ligar e desligar etapas.</p><div class="acts"><button class="btn primary" data-act="tnew" data-p="${p.id}">Criar termo deste projeto</button><button class="btn" data-act="timport" data-tp="${p.id}">Importar .xlsx</button></div></section>`;
   return `<section class="panel"><div class="hd" style="margin-bottom:8px"><div><h2>Termo de abertura de projeto</h2><p class="hint" style="margin:2px 0 0">Mudou uma resposta, o checklist se ajusta na hora.</p></div>
@@ -967,6 +985,7 @@ document.addEventListener('click',async e=>{
     for(const ev of evs){try{await callCal('delete_event',{eventId:ev})}catch(er){if(AUTH.includes(er&&er.code))break}}
   }
   else if(a==='delno'){delAsk=null;requestRender()}
+  else if(a==='btab'){btab[id]=b.dataset.v;lastFocus=null;requestRender();window.scrollTo({top:0})}
   else if(a==='ptab'){ptab[id]=b.dataset.v;lastFocus=null;requestRender()}
   else if(a==='tnew'&&p){p.termo={};save(id);requestRender()}
   else if(a==='timport')importTermo(b.dataset.tp);
