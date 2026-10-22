@@ -822,12 +822,13 @@ async function exportStatus(ids){
   const cardH=336,cm=document.createElement('canvas').getContext('2d');cm.font='500 15px '+FONT;
   const lines=a=>a.reduce((n,t)=>n+wrap(cm,t,470,3).length,0),bh=Math.max(lines(POS),lines(ATT))*21+a_pad(POS.length,ATT.length)+60;
   function a_pad(a,b){return Math.max(a,b)*8}
-  const top=268,H=top+list.length*(cardH+14)+bh+70;
+  const top=multi?268:132,H=top+list.length*(cardH+14)+bh+70;
   const stC={ok:CP.ok,warn:CP2.warn,bad:CP.bad},stL={ok:'No prazo',warn:'Atenção',bad:'Crítico'};
   await canvasOut((g,W,ring)=>{
-    head(g,ring,'Status report semanal · Implementação i9','Semana de '+fD(mon)+' a '+fD(mon+4)+'/'+new Date().getFullYear());
-    const bw=(W-88-48)/4;[['Projetos',String(list.length),CP.indigo],['No prazo',String(cnt.ok),CP.ok],['Em atenção',String(cnt.warn),CP2.warn],['Críticos',String(cnt.bad),CP.bad]].forEach((k,i)=>{
-      const x=44+i*(bw+16);rr(g,x,122,bw,110,18,'#fff',CP.line);g.fillStyle=CP.mute;g.font='700 13px '+FONT;g.fillText(k[0].toUpperCase(),x+20,152);g.fillStyle=k[2];g.font='800 44px '+FONT;g.fillText(k[1],x+20,206)});
+    if(multi)head(g,ring,'Status report semanal · Implementação i9','Semana de '+fD(mon)+' a '+fD(mon+4)+'/'+new Date().getFullYear());
+    else head(g,ring,'Status report semanal · Implementação i9 · semana de '+fD(mon)+' a '+fD(mon+4),list[0].p.name);
+    if(multi){const bw=(W-88-48)/4;[['Projetos',String(list.length),CP.indigo],['No prazo',String(cnt.ok),CP.ok],['Em atenção',String(cnt.warn),CP2.warn],['Críticos',String(cnt.bad),CP.bad]].forEach((k,i)=>{
+      const x=44+i*(bw+16);rr(g,x,122,bw,110,18,'#fff',CP.line);g.fillStyle=CP.mute;g.font='700 13px '+FONT;g.fillText(k[0].toUpperCase(),x+20,152);g.fillStyle=k[2];g.font='800 44px '+FONT;g.fillText(k[1],x+20,206)})}
     list.forEach((c,k)=>{
       const i=info[k],y=top+k*(cardH+14),X=44,Wd=W-88,col=stC[i.st];
       rr(g,X,y,Wd,cardH,20,'#fff',CP.line);rr(g,X,y,8,cardH,4,col);
@@ -977,7 +978,7 @@ document.addEventListener('click',async e=>{
   else if(a==='img'&&p)exportImage(id);
   else if(a==='imgall')exportPortfolioImage();
   else if(a==='rep'&&p)exportStatus([id]);
-  else if(a==='repall')exportStatus(Object.keys(P));
+  else if(a==='repall'){const ids=Object.values(P).sort((x,y)=>(x.created||0)-(y.created||0)).map(x=>x.id);(async()=>{for(const i of ids){await exportStatus([i]);await new Promise(r=>setTimeout(r,400))}if(ids.length>1)toast(ids.length+' imagens geradas, uma por projeto')})()}
   else if(a==='project'&&p){const r=projectTasks(p);save(id);requestRender();toast(!r.changed?'O plano já cabe até o Go Live. Nada a ajustar.':r.ok?'Tarefas projetadas: '+r.notes.length+' ajustes para caber no Go Live':'Mesmo no mínimo não cabe: ajuste o Go Live ou desative etapas')}
   else if(a==='restore'&&p&&p.blk0){p.blk=p.blk0;p.pp=p.pp0||{};delete p.blk0;delete p.pp0;save(id);requestRender();toast('Durações restauradas')}
   else if(a==='xopen'){xform[id]=+b.dataset.n;openPh[id+':'+b.dataset.n]=true;requestRender()}
