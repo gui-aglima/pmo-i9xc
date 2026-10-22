@@ -818,7 +818,7 @@ async function exportStatus(ids){
   const tag=(c,t)=>multi?c.p.name+': '+t:t;
   const POS=[],ATT=[];list.forEach((c,k)=>{info[k].pos.slice(0,2).forEach(t=>POS.push(tag(c,t)));info[k].att.slice(0,3).forEach(t=>ATT.push(tag(c,t)))});
   if(!POS.length)POS.push('Sem marcos concluídos nesta semana.');if(!ATT.length)ATT.push('Nenhum ponto de atenção no momento.');
-  const cardH=208,cm=document.createElement('canvas').getContext('2d');cm.font='500 15px '+FONT;
+  const cardH=336,cm=document.createElement('canvas').getContext('2d');cm.font='500 15px '+FONT;
   const lines=a=>a.reduce((n,t)=>n+wrap(cm,t,470,3).length,0),bh=Math.max(lines(POS),lines(ATT))*21+a_pad(POS.length,ATT.length)+60;
   function a_pad(a,b){return Math.max(a,b)*8}
   const top=268,H=top+list.length*(cardH+14)+bh+70;
@@ -838,8 +838,16 @@ async function exportStatus(ids){
       const ex=bx+bwid*Math.min(100,i.exp)/100;g.fillStyle=CP.ink;g.fillRect(ex-1.5,by-6,3,28);
       g.fillStyle=col;g.font='800 26px '+FONT;g.textAlign='right';g.fillText(Math.round(i.act)+'%',X+Wd-30,by+16);g.textAlign='left';
       g.fillStyle=CP.mute;g.font='500 12px '+FONT;g.fillText('concluído · traço escuro = previsto até hoje ('+Math.round(i.exp)+'%)',bx,by+38);
+      // evolução por parte da operação
+      g.fillStyle=CP.ink;g.font='700 13px '+FONT;g.fillText('EVOLUÇÃO POR PARTE DA OPERAÇÃO',bx,y+146);
+      const cw=(Wd-60)/5,all=c.phases;
+      all.forEach((f,q)=>{const cx=bx+(q%5)*cw,cy=y+160+Math.floor(q/5)*52,pc=f.off?0:Math.round(f.pct),cl=phCol(f),wd=cw-14;
+        g.fillStyle=f.off?CP.idle:CP.ink;g.font='600 12px '+FONT;g.fillText(fit(g,f.n+'. '+f.t,wd-40),cx,cy+12);
+        g.fillStyle=cl;g.font='800 13px '+FONT;g.textAlign='right';g.fillText(f.off?'—':pc+'%',cx+wd,cy+12);g.textAlign='left';
+        rr(g,cx,cy+22,wd,9,5,CP.track);if(pc>0)rr(g,cx,cy+22,Math.max(9,wd*pc/100),9,5,cl);
+        if(f.off){g.fillStyle=CP.idle;g.font='500 11px '+FONT;g.fillText('desativado',cx,cy+44)}});
       // linha do tempo até a linha de chegada
-      const tl=c.phases.filter(f=>!f.off&&f.n<=c.goAfter&&f.end!=null),s0=Math.min(c.S,T),e0=c.G,span=Math.max(1,e0-s0),tx=bx,tw=bwid,ty=y+166;
+      const tl=c.phases.filter(f=>!f.off&&f.n<=c.goAfter&&f.end!=null),s0=Math.min(c.S,T),e0=c.G,span=Math.max(1,e0-s0),tx=bx,tw=bwid,ty=y+286;
       const px=n=>tx+tw*Math.max(0,Math.min(1,(n-s0)/span));
       rr(g,tx,ty,tw,12,6,'#F1EFF8');
       tl.forEach(f=>{const a=px(f.start),b=px(f.end+1),full=f.act.length&&f.nDone===f.act.length,lt=f.act.some(z=>z.late&&!z.done),run=f.act.some(z=>z.pct>0);
