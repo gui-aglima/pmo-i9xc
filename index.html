@@ -342,6 +342,8 @@ function evalRule(T,d){
   return {s,why:s==='on'?'':'Termo: '+dec.map(i=>FLD[i.id].l+' = '+vLabel(i.id,i.v)).join('; '),pend};
 }
 function ruleMap(T){const m={};Object.keys(RULES).forEach(k=>m[k]=evalRule(T,RULES[k]));return m}
+const ME_MAIL='guilherme.andradegl.contato@gmail.com';
+const mkey=n=>String(n||'').trim().toLowerCase();
 function build(p){
   const H=hols(p.hol||'sp'), G=adjBD(num(p.goLive),H), goAfter=p.goAfter||9, ov=p.ov||{}, blk=p.blk||{};
   const R=p.termo?ruleMap(p.termo):{};
@@ -357,16 +359,19 @@ function build(p){
       st.cli=!st.off&&r.s==='cli';
       st.title=st.cli?'Acompanhar entrega do cliente: '+st.base:st.base;
       st.owner=o.owner!=null?o.owner:(st.owner0||'');
+      st.email=(st.owner?((p.mail||{})[mkey(st.owner)]||''):(o.email||'')).trim();
+      st.mine=!st.email||st.email.toLowerCase()===ME_MAIL;
       st.status=o.status||'Não iniciado';
       st.done=!st.off&&st.status==='Concluído';
       st.pct=st.off?0:(st.done?100:(st.status==='Em andamento'?(o.pct!=null?o.pct:50):0));
     });
     const act=steps.filter(s=>!s.off);
     const d=blk[ph.n]!=null?+blk[ph.n]:2;
-    return {n:ph.n,t:ph.t,steps,act,off:act.length===0,days:Math.max(.5,Math.round(d*2)/2||2),pp:ph.n>1&&!!(p.pp||{})[ph.n],post:ph.n>goAfter};
+    return {n:ph.n,t:ph.t,steps,act,off:act.length===0,days:Math.max(.5,Math.round(d*2)/2||2),pp:ph.n>1&&(p.pp||{})[ph.n]===true,anc:0,post:ph.n>goAfter};
   });
+  phases.forEach(ph=>{const v=(p.pp||{})[ph.n];if(typeof v==='number'&&v>=1&&v<ph.n){const t=phases[v-1];if(t&&t.post===ph.post)ph.anc=v}});
   const group=list=>{const gs=[];list.forEach((ph,i)=>{if(ph.pp&&i>0&&gs.length)gs[gs.length-1].push(ph);else gs.push([ph])});return gs};
-  const preG=group(phases.filter(f=>!f.post)), postG=group(phases.filter(f=>f.post));
+  const preG=group(phases.filter(f=>!f.post&&!f.anc)), postG=group(phases.filter(f=>f.post&&!f.anc));
   const ulen=ph=>ph.off?0:ph.days*2;
   const U=preG.reduce((a,g)=>a+Math.max.apply(null,g.map(ulen)),0);
   const lastEnd=prevBD(G,H), fullDays=Math.floor(U/2), rem=U%2;
@@ -382,24 +387,36 @@ function build(p){
     groups.forEach(g=>{
       let nx={nn:n,nh:h};
       g.forEach(ph=>{
-        if(ph.off){ph.start=n;ph.startH=h;ph.end=n;ph.endMid=false;ph.steps.forEach(st=>{st.start=n;st.end=n});return}
+        if(ph.off){ph.start=n;ph.startH=h;ph.end=n;ph.fin=n;ph.endMid=false;ph.steps.forEach(st=>{st.start=n;st.end=n});return}
         const r=span(n,h,ph.days*2);
         ph.start=n;ph.startH=h;ph.end=r.en;ph.endMid=r.nh===1;
         ph.steps.forEach(st=>{st.start=ph.start;st.end=st.o.due?adjBD(num(st.o.due),H):ph.end});
-        maxEnd=Math.max(maxEnd,ph.end);
+        ph.fin=Math.max(ph.end,...ph.act.map(z=>z.end));
+        maxEnd=Math.max(maxEnd,ph.fin);
         if(r.nn>nx.nn||(r.nn===nx.nn&&r.nh>nx.nh))nx=r;
       });
       n=nx.nn;h=nx.nh;
     });
     return maxEnd===-Infinity?n0:maxEnd;
   };
-  const preEnd=place(preG,S,Sh), postEnd=place(postG,G,0);
+  let preEnd=place(preG,S,Sh), postEnd=place(postG,G,0);
+  // fases ancoradas: começam junto com a fase escolhida e não empurram a sequência
+  phases.filter(f=>f.anc).forEach(ph=>{
+    const t=phases[ph.anc-1];
+    if(ph.off){ph.start=t.start;ph.startH=t.startH;ph.end=t.start;ph.fin=t.start;ph.endMid=false;ph.steps.forEach(st=>{st.start=t.start;st.end=t.start});return}
+    const r=span(t.start,t.startH,ph.days*2);
+    ph.start=t.start;ph.startH=t.startH;ph.end=r.en;ph.endMid=r.nh===1;
+    ph.steps.forEach(st=>{st.start=ph.start;st.end=st.o.due?adjBD(num(st.o.due),H):ph.end});
+    ph.fin=Math.max(ph.end,...ph.act.map(z=>z.end));
+    if(ph.post)postEnd=Math.max(postEnd,ph.fin);else preEnd=Math.max(preEnd,ph.fin);
+  });
   phases.forEach(ph=>{ph.pct=ph.act.length?ph.act.reduce((a,s)=>a+s.pct,0)/ph.act.length:0;ph.nDone=ph.act.filter(s=>s.done).length});
   const flat=[].concat.apply([],phases.map(f=>f.steps)), act=flat.filter(s=>!s.off);
   const T=todayN();
   flat.forEach(st=>{st.proj=p;st.late=!st.off&&!st.done&&st.end<T;st.lateDone=st.done&&st.o.doneAt&&num(st.o.doneAt)>st.end});
+  const ab=p.termo&&p.termo.abertura?num(p.termo.abertura):null, W0=ab&&isFinite(ab)?ab:S;
   const pend=[];flat.forEach(st=>st.pend.forEach(id=>{if(pend.indexOf(id)<0)pend.push(id)}));
-  return {p,H,G,goAfter,phases,flat,act,D:U/2,S,Sh,lastEnd,preEnd,maxEnd:Math.max(preEnd,postEnd),overrun:preEnd>lastEnd,
+  return {p,H,G,goAfter,phases,flat,act,D:U/2,S,Sh,W0,hasAb:W0!==S||!!ab,lastEnd,preEnd,maxEnd:Math.max(preEnd,postEnd),overrun:preEnd>lastEnd,
     nOff:flat.length-act.length,nCli:act.filter(s=>s.cli).length,pend,
     prog:act.length?act.reduce((a,s)=>a+s.pct,0)/act.length:0,nDone:act.filter(s=>s.done).length,nLate:act.filter(s=>s.late).length,nBlk:act.filter(s=>s.status==='Bloqueado').length,
     next:act.filter(s=>!s.done).sort((a,b)=>a.end-b.end)[0]||null};
@@ -546,18 +563,18 @@ function setPath(o,path,v){const ks=path.split('.');while(ks.length>1)o=o[ks.shi
 
 /* ---------- visão do projeto ---------- */
 function timeline(c){
-  const a=c.S,b=Math.max(c.maxEnd,c.G),L=b-a+1,T=todayN(),pos=n=>((n-a)/L*100),mk=[];
+  const a=Math.min(c.S,c.W0),b=Math.max(c.maxEnd,c.G),L=b-a+1,T=todayN(),pos=n=>((n-a)/L*100),mk=[];
   const d0=new Date(a*D0);let y=d0.getUTCFullYear(),m=d0.getUTCMonth()+1;const ax=[];
   for(let i=0;i<40;i++){const n=Math.floor(Date.UTC(y,m,1)/D0);if(n>b)break;if(n>=a)ax.push(`<span style="left:${pos(n).toFixed(2)}%">${fmt(n,{month:'short'}).replace('.','')}</span>`);m++;if(m>11){m=0;y++}}
   const marks=r=>{let s='';s+=`<i class="mk gl" style="left:${pos(c.G).toFixed(2)}%"></i>`;if(T>=a&&T<=b)s+=`<i class="mk td" style="left:${pos(T).toFixed(2)}%"></i>`;return s};
   return `<div class="tl"><div class="r"><span></span><div class="ax">${ax.join('')}</div></div>`+c.phases.map(ph=>{
-    const col=PCOL[(ph.n-1)%10],w=Math.max(.9,(ph.end-ph.start+1)/L*100);
+    const col=PCOL[(ph.n-1)%10],w=Math.max(.9,(ph.fin-ph.start+1)/L*100);
     if(ph.off)return `<div class="r"><span class="lb" style="text-decoration:line-through" title="Bloco desativado pelo termo">${ph.n}. ${esc(ph.t)}</span><div class="tr">${marks()}</div></div>`;
-    return `<div class="r"><span class="lb" title="${esc(ph.t)}">${ph.n}. ${esc(ph.t)}</span><div class="tr"><span class="bx" style="left:${pos(ph.start).toFixed(2)}%;width:${w.toFixed(2)}%;background:${col}"><i style="width:${ph.pct.toFixed(0)}%;background:${col}"></i></span>${marks()}</div></div>`}).join('')+
+    return `<div class="r"><span class="lb" title="${esc(ph.t)}${ph.anc?' (começa junto com a fase '+ph.anc+')':''} · ${fD(ph.start)} → ${fD(ph.fin)}">${ph.n}. ${esc(ph.t)}</span><div class="tr"><span class="bx" style="left:${pos(ph.start).toFixed(2)}%;width:${w.toFixed(2)}%;background:${col}"><i style="width:${ph.pct.toFixed(0)}%;background:${col}"></i></span>${marks()}</div></div>`}).join('')+
   `</div><div class="leg"><span><b style="background:var(--amber)"></b>Go Live ${fD(c.G)}</span><span><b style="background:var(--coral)"></b>Hoje</span><span>Barra cheia = progresso da fase</span></div>`;
 }
 function calState(p,st){
-  const e=st.o.ev;if(st.off)return e&&e!=='?'?'<span class="pill warn">Remover do Agenda</span>':'<span class="pill mute">—</span>';if(!e)return st.done?'<span class="pill mute">—</span>':'<span class="pill mute">Não enviada</span>';
+  const e=st.o.ev;if(st.off||!st.mine)return e&&e!=='?'?'<span class="pill warn">Remover do Agenda</span>':'<span class="pill mute">—</span>';if(!e)return st.done?'<span class="pill mute">—</span>':'<span class="pill mute">Não enviada</span>';
   if(e==='?')return '<span class="pill warn" title="Criada, mas o ID não veio na resposta">Enviada</span>';
   return st.o.evSig===sigOf(p,st)?'<span class="pill ok">No Agenda</span>':'<span class="pill warn">Atualizar</span>';
 }
@@ -567,7 +584,7 @@ function stepRow(c,st){
   if(st.off)return `<tr class="off"><td class="tt"><span class="cd">${st.code}</span>${esc(st.base)} <span class="tag off">DESATIVADA</span><small class="why">${esc(st.manualOff?'Desativada manualmente':st.why)}</small></td><td colspan="5" class="hint">Fora do planejamento: sem prazo e sem tarefa no Agenda.</td><td>${calState(p,st)}</td><td></td><td><button class="btn small" data-act="force" data-v="on" data-p="${id}" data-k="${st.key}">${st.manualOff?'Reativar':'Ativar mesmo assim'}</button></td></tr>`;
   const sit=st.done?(st.lateDone?'<span class="pill warn">Concluído c/ atraso</span>':'<span class="pill ok">Concluído</span>'):st.late?'<span class="pill late">Atrasado</span>':'<span class="pill mute">No prazo</span>';
   return `<tr class="${cls}"><td class="tt"><span class="cd">${st.code}</span>${esc(st.title)}${st.extra?` <span class="tag">EXTRA</span>`:''}${st.cli?` <span class="tag cli">CLIENTE</span>`:''}${st.manualOn?` <span class="tag cli">ATIVADA MANUALMENTE</span>`:''}${st.cli&&st.why?`<small class="why">${esc(st.why)}</small>`:''}</td>
-   <td><input type="text" ${d('owner')} value="${esc(st.owner)}" placeholder="Responsável" aria-label="Responsável ${st.code}" style="min-width:130px"></td>
+   <td><input type="text" ${d('owner')} value="${esc(st.owner)}" placeholder="Responsável" aria-label="Responsável ${st.code}" style="min-width:130px"><input type="email" ${d('email')} value="${esc(st.email)}" placeholder="E-mail do responsável" aria-label="E-mail ${st.code}" style="min-width:130px;margin-top:4px;font-size:12px">${st.mine?'':'<small class="why">Atribuída a outra pessoa: fora da sua agenda</small>'}</td>
    <td><select ${d('status')} aria-label="Status ${st.code}">${STATUS.map(x=>`<option ${x===st.status?'selected':''}>${x}</option>`).join('')}</select></td>
    <td><input type="number" min="0" max="100" ${d('pct')} value="${st.pct}" ${st.status==='Em andamento'?'':'disabled'} aria-label="% ${st.code}" style="width:62px"></td>
    <td><input type="date" ${d('due')} value="${iso(st.end)}" aria-label="Prazo ${st.code}" style="min-width:128px" title="${st.o.due?'Prazo ajustado à mão':'Prazo do bloco'}"></td>
@@ -580,26 +597,26 @@ function phaseHTML(c,ph,force){
   let open=force||openPh[k];if(open===undefined){const firstPending=c.phases.find(f=>!f.off&&f.nDone<f.act.length);open=firstPending?firstPending.n===ph.n:false}
   const col=PCOL[(ph.n-1)%10],xf=xform[id]===ph.n;
   return `<details class="ph" data-ph="${k}" ${open?'open':''}><summary><span class="n" style="background:${col}">${ph.n}</span><span class="t">${esc(ph.t)}${ph.post?' <span class="tag" style="background:var(--amber);color:#09092D">PÓS GO LIVE</span>':''}${ph.off?' <span class="tag off">BLOCO DESATIVADO</span>':''}</span>
-   <span class="meta"><span class="num">${ph.nDone}/${ph.act.length}</span><span class="bar"><i style="width:${ph.pct.toFixed(0)}%"></i></span><span class="num">${ph.off?'sem prazo':fD(ph.start)+(ph.startH?' (tarde)':'')+' → '+fD(ph.end)+(ph.endMid?' (manhã)':'')}</span></span><span class="chev">▾</span></summary>
+   <span class="meta"><span class="num">${ph.nDone}/${ph.act.length}</span><span class="bar"><i style="width:${ph.pct.toFixed(0)}%"></i></span><span class="num">${ph.off?'sem prazo':fD(ph.start)+(ph.startH?' (tarde)':'')+' → '+fD(ph.fin)+(ph.fin===ph.end&&ph.endMid?' (manhã)':'')}</span></span><span class="chev">▾</span></summary>
    <div class="pb"><div class="opts"><span class="pill mute">${ph.off?'Bloco desativado: não ocupa prazo':'Bloco de '+fDias(ph.days)+' '+(ph.days===1?'dia útil':'dias úteis')}</span>
    ${force?`<label>Duração (dias úteis) <input id="pb${ph.n}" type="number" min="0.5" step="0.5" style="width:84px" data-p="${id}" data-f="blk" data-n="${ph.n}" value="${ph.days}"></label>`:''}
-   ${ph.n>1?`<label><input type="checkbox" data-act="pp" data-p="${id}" data-n="${ph.n}" ${ph.pp?'checked':''}> Roda junto com a fase anterior</label>`:''}
+   ${ph.n>1?`<label>Começa <select data-act="pp" data-p="${id}" data-n="${ph.n}" aria-label="Quando começa a fase ${ph.n}"><option value="seq" ${!ph.pp&&!ph.anc?'selected':''}>Em sequência (depois da anterior)</option><option value="prev" ${ph.pp?'selected':''}>Junto com a anterior (a próxima espera as duas)</option>${c.phases.filter(f=>f.n<ph.n&&f.post===ph.post).map(f=>`<option value="${f.n}" ${ph.anc===f.n?'selected':''}>Junto com ${f.n}. ${esc(f.t)} (não empurra as demais)</option>`).join('')}</select></label>`:''}
    <button class="btn small" data-act="xopen" data-p="${id}" data-n="${ph.n}">+ Etapa extra</button></div>
    <div class="tw"><table class="t"><thead><tr><th>Etapa</th><th>Responsável</th><th>Status</th><th>%</th><th>Prazo</th><th>Situação</th><th>Agenda</th><th>Observações</th><th></th></tr></thead><tbody>${ph.steps.map(s=>stepRow(c,s)).join('')}</tbody></table></div>
    ${xf?`<div class="xf"><div class="f"><label for="xf-t">Nova etapa na fase ${ph.n}</label><input id="xf-t" type="text" placeholder="Ex.: Homologar integração com o ERP"></div><div class="f"><label for="xf-o">Responsável</label><input id="xf-o" type="text"></div><button class="btn primary" data-act="xadd" data-p="${id}" data-n="${ph.n}">Adicionar</button><button class="btn ghost" data-act="xclose" data-p="${id}">Cancelar</button></div>`:''}
    </div></details>`;
 }
 function sigOf(p,st){return [iso(st.end),st.done?1:0,st.code,st.title,p.name].join('|')}
-function pending(c){let n=0,u=0,d=0;c.flat.forEach(st=>{const e=st.o.ev;if(st.off){if(e&&e!=='?')d++}else if(!e){if(!st.done)n++}else if(e!=='?'&&st.o.evSig!==sigOf(c.p,st))u++});return{n,u,d}}
+function pending(c){let n=0,u=0,d=0;c.flat.forEach(st=>{const e=st.o.ev;if(st.off||!st.mine){if(e&&e!=='?')d++}else if(!e){if(!st.done)n++}else if(e!=='?'&&st.o.evSig!==sigOf(c.p,st))u++});return{n,u,d}}
 const phCol=f=>f.off?CP.idle:PCOL[f.n-1];const phLate=f=>!f.off&&f.act.some(z=>z.late&&!z.done);
 function checkTab(c){const id=c.p.id,sel=btab[id]||'all',ph=sel==='all'?null:c.phases.find(f=>f.n===+sel);
   const tabs=`<div class="btabs" role="tablist" aria-label="Partes da operação"><button role="tab" data-act="btab" data-v="all" data-p="${id}" aria-selected="${!ph}"><b>Visão geral</b><span class="pc" style="color:${c.prog>=100?CP.ok:CP.run}">${Math.round(c.prog)}%</span></button>${c.phases.map(f=>`<button role="tab" data-act="btab" data-v="${f.n}" data-p="${id}" aria-selected="${ph&&ph.n===f.n}" class="${f.off?'off':''}"><i style="background:${phCol(f)}"></i><span class="tn">${f.n}. ${esc(f.t)}</span><span class="pc" style="color:${phCol(f)}">${f.off?'—':Math.round(f.pct)+'%'}</span>${phLate(f)?'<b class="lt" title="Etapa atrasada">!</b>':''}</button>`).join('')}</div>`;
   if(ph)return tabs+phaseHTML(c,ph,true);
-  const cards=`<div class="ov">${c.phases.map(f=>`<button class="ovc" data-act="btab" data-v="${f.n}" data-p="${id}"><div class="oh"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><b>${esc(f.t)}</b><span class="pc" style="color:${phCol(f)}">${f.off?'desativado':Math.round(f.pct)+'%'}</span></div><div class="ob"><i style="width:${f.off?0:f.pct.toFixed(0)}%;background:${phCol(f)}"></i></div><small>${f.off?'sem prazo':f.nDone+'/'+f.act.length+' etapas · até '+fD(f.end)}${f.act.some(z=>z.late&&!z.done)?' · <span style="color:'+CP.bad+'">atrasada</span>':''}</small></button>`).join('')}</div>`;
+  const cards=`<div class="ov">${c.phases.map(f=>`<button class="ovc" data-act="btab" data-v="${f.n}" data-p="${id}"><div class="oh"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><b>${esc(f.t)}</b><span class="pc" style="color:${phCol(f)}">${f.off?'desativado':Math.round(f.pct)+'%'}</span></div><div class="ob"><i style="width:${f.off?0:f.pct.toFixed(0)}%;background:${phCol(f)}"></i></div><small>${f.off?'sem prazo':f.nDone+'/'+f.act.length+' etapas · até '+fD(f.fin)}${f.act.some(z=>z.late&&!z.done)?' · <span style="color:'+CP.bad+'">atrasada</span>':''}</small></button>`).join('')}</div>`;
   return tabs+`<section class="panel"><h2>Evolução por parte da operação</h2>${cards}</section>
   <section class="panel"><h2>Linha do tempo</h2>${timeline(c)}</section>
   <section class="panel"><h2>Duração por bloco</h2><p class="hint" style="margin:4px 0 10px">Dias úteis de cada fase, aceita meio dia. Todas as etapas do bloco vencem no fim da janela. Mudou aqui, as datas e o Agenda (botão "Atualizar") acompanham.</p>
-   <div class="blks">${c.phases.map(f=>`<div class="bk"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><label for="pb${f.n}">${esc(f.t)}<small>${f.off?'desativado pelo termo':fD(f.start)+(f.startH?' tarde':'')+' → '+fD(f.end)+(f.endMid?' manhã':'')+(f.pp?' · junto com a anterior':'')}</small></label><input id="pb${f.n}" type="number" min="0.5" step="0.5" data-p="${id}" data-f="blk" data-n="${f.n}" value="${f.days}"></div>`).join('')}</div></section>`}
+   <div class="blks">${c.phases.map(f=>`<div class="bk"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><label for="pb${f.n}">${esc(f.t)}<small>${f.off?'desativado pelo termo':fD(f.start)+(f.startH?' tarde':'')+' → '+fD(f.fin)+(f.fin===f.end&&f.endMid?' manhã':'')+(f.pp?' · junto com a anterior':f.anc?' · junto com a fase '+f.anc:'')}</small></label><input id="pb${f.n}" type="number" min="0.5" step="0.5" data-p="${id}" data-f="blk" data-n="${f.n}" value="${f.days}"></div>`).join('')}</div></section>`}
 function termoTab(c){const p=c.p;
   if(!p.termo)return `<section class="panel"><h2>Termo de abertura de projeto</h2><p class="hint">Este projeto foi criado antes do termo existir no PMO. Crie o termo para as respostas passarem a ligar e desligar etapas.</p><div class="acts"><button class="btn primary" data-act="tnew" data-p="${p.id}">Criar termo deste projeto</button><button class="btn" data-act="timport" data-tp="${p.id}">Importar .xlsx</button></div></section>`;
   return `<section class="panel"><div class="hd" style="margin-bottom:8px"><div><h2>Termo de abertura de projeto</h2><p class="hint" style="margin:2px 0 0">Mudou uma resposta, o checklist se ajusta na hora.</p></div>
@@ -621,7 +638,7 @@ function projectView(c){
   ${delAsk===id?`<div class="alert bad"><span>Isso apaga o projeto e remove as ${c.flat.filter(s=>s.o.ev&&s.o.ev!=='?').length} tarefas dele do Agenda. Clique de novo em <b>Confirmar exclusão</b> ou <button class="btn small ghost" data-act="delno">cancelar</button>.</span></div>`:''}
   <div class="prev" style="margin-top:0">
    <div class="kp hi"><div class="k">Go Live</div><input type="date" data-p="${id}" data-f="golive" value="${p.goLive}" aria-label="Data do Go Live" style="margin-top:6px"><div class="s">${c.G<T?'realizado':left+' '+plural(left,'dia útil','dias úteis')+' restantes'} · ${fDW(c.G)}</div></div>
-   <div class="kp"><div class="k">Janela do plano</div><div class="v">${fD(c.S)} → ${fD(c.maxEnd)}</div><div class="s">${fDias(c.D)} dias úteis antes do Go Live</div></div>
+   <div class="kp"><div class="k">Janela do plano</div><div class="v">${fD(c.W0)} → ${fD(c.maxEnd)}</div><div class="s">${c.hasAb?'Abertura do termo · '+fDias(countBD(c.W0,c.G,c.H))+' dias úteis até o Go Live':'Sem data de abertura no termo · plano em sequência: '+fDias(c.D)+' dias úteis'}</div></div>
    <div class="kp"><div class="k">Progresso</div><div class="v">${Math.round(c.prog)}%</div><div class="s">${c.nDone}/${c.act.length} etapas concluídas</div></div>
    <div class="kp ${c.nLate?'bad':''}"><div class="k">Atrasadas</div><div class="v">${c.nLate}</div><div class="s">${c.nBlk} ${plural(c.nBlk,'bloqueada','bloqueadas')}</div></div>
    <div class="kp"><div class="k">Próximo prazo</div><div class="v">${c.next?fD(c.next.end):'—'}</div><div class="s">${c.next?esc(c.next.code+' '+c.next.title):'tudo concluído'}</div></div></div>
@@ -678,10 +695,10 @@ async function exportICS(id){
   const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//PMO I9XC//PT-BR','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:PMO I9XC'];
   let n=0;
   c.flat.forEach(st=>{
-    const uid=p.id+'-'+st.key+'@pmo-i9xc',can=st.off||st.done;
+    const uid=p.id+'-'+st.key+'@pmo-i9xc',can=st.off||st.done||!st.mine;
     if(can&&!(st.o.icsSent))return;
     L.push('BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+stamp,'SEQUENCE:'+seq,'DTSTART;VALUE=DATE:'+ymd(st.end),'DTEND;VALUE=DATE:'+ymd(st.end+1),
-      'SUMMARY:'+esc2((st.done?'✔ ':'')+'['+p.name+'] '+st.code+' '+st.title),'DESCRIPTION:'+esc2('Projeto: '+p.name+'\nFase '+st.phase+(st.owner?'\nResponsável: '+st.owner:'')),'TRANSP:TRANSPARENT',st.off?'STATUS:CANCELLED':'STATUS:CONFIRMED','END:VEVENT');
+      'SUMMARY:'+esc2((st.done?'✔ ':'')+'['+p.name+'] '+st.code+' '+st.title),'DESCRIPTION:'+esc2('Projeto: '+p.name+'\nFase '+st.phase+(st.owner?'\nResponsável: '+st.owner:'')),'TRANSP:TRANSPARENT',(st.off||!st.mine)?'STATUS:CANCELLED':'STATUS:CONFIRMED','END:VEVENT');
     n++;if(!can)ovOf(p,st.key).icsSent=1;
   });
   L.push('END:VCALENDAR');save(id);
@@ -691,7 +708,7 @@ async function exportICS(id){
 async function syncProject(id){
   const p=P[id];if(!p||(SY[id]&&SY[id].run))return;
   const c=build(p),jobs=[];
-  c.flat.forEach(st=>{const e=st.o.ev;if(st.off){if(e&&e!=='?')jobs.push({st,t:'d'})}else if(!e){if(!st.done)jobs.push({st,t:'c'})}else if(e!=='?'&&st.o.evSig!==sigOf(p,st))jobs.push({st,t:'u'})});
+  c.flat.forEach(st=>{const e=st.o.ev;if(st.off||!st.mine){if(e&&e!=='?')jobs.push({st,t:'d'})}else if(!e){if(!st.done)jobs.push({st,t:'c'})}else if(e!=='?'&&st.o.evSig!==sigOf(p,st))jobs.push({st,t:'u'})});
   if(!jobs.length){SY[id]={run:false,msg:'Tudo já está no Agenda.'};requestRender();return}
   const s=SY[id]={run:true,done:0,total:jobs.length,msg:''};let i=0,fail=0,stop=null,noId=0;requestRender();
   const worker=async()=>{while(i<jobs.length&&!stop){const j=jobs[i++],st=j.st,o=ovOf(p,st.key);
@@ -852,10 +869,10 @@ async function exportStatus(ids){
         rr(g,cx,cy+22,wd,9,5,CP.track);if(pc>0)rr(g,cx,cy+22,Math.max(9,wd*pc/100),9,5,cl);
         if(f.off){g.fillStyle=CP.idle;g.font='500 11px '+FONT;g.fillText('desativado',cx,cy+44)}});
       // linha do tempo até a linha de chegada
-      const tl=c.phases.filter(f=>!f.off&&f.n<=c.goAfter&&f.end!=null),s0=Math.min(c.S,T),e0=c.G,span=Math.max(1,e0-s0),tx=bx,tw=bwid,ty=y+286;
+      const tl=c.phases.filter(f=>!f.off&&f.n<=c.goAfter&&f.end!=null),s0=Math.min(c.S,c.W0,T),e0=c.G,span=Math.max(1,e0-s0),tx=bx,tw=bwid,ty=y+286;
       const px=n=>tx+tw*Math.max(0,Math.min(1,(n-s0)/span));
       rr(g,tx,ty,tw,12,6,'#F1EFF8');
-      tl.forEach(f=>{const a=px(f.start),b=px(f.end+1),w=Math.max(2,b-a-2),lt=phLate(f);
+      tl.forEach(f=>{const a=px(f.start),b=px(f.fin+1),w=Math.max(2,b-a-2),lt=phLate(f);
         g.fillStyle=PCOL[f.n-1];g.globalAlpha=.25;g.fillRect(a+1,ty,w,12);g.globalAlpha=1;g.fillRect(a+1,ty,w*Math.min(100,f.pct)/100,12);if(lt){g.fillStyle=CP.bad;g.fillRect(a+1,ty-4,w,3)}});
       const hx=px(T);g.fillStyle=CP.indigo;g.beginPath();g.moveTo(hx,ty-4);g.lineTo(hx-7,ty-16);g.lineTo(hx+7,ty-16);g.closePath();g.fill();
       g.font='700 12px '+FONT;g.textAlign=hx-tx<20?'left':'center';g.fillText('Hoje',hx-(hx-tx<20?7:0),ty-22);g.textAlign='left';
@@ -1040,7 +1057,7 @@ document.addEventListener('change',e=>{
   if(d.t){if(d.tp==='w')return;const p0=P[d.tp];if(p0){p0.termo=p0.termo||{};applyTermo(p0.termo,t);save(p0.id);requestRender()}return}
   if(d.w){if(d.w==='goAfter')W.goAfter=+t.value;return}
   const p=P[d.p];
-  if(t.matches('[data-act="pp"]')&&p){p.pp=p.pp||{};if(t.checked)p.pp[d.n]=true;else delete p.pp[d.n];save(p.id);requestRender();return}
+  if(t.matches('[data-act="pp"]')&&p){p.pp=p.pp||{};const v=t.value;if(v==='seq')delete p.pp[d.n];else if(v==='prev')p.pp[d.n]=true;else p.pp[d.n]=+v;save(p.id);requestRender();return}
   if(!p)return;
   if(d.f==='pname'){p.name=t.value.trim()||p.name;save(p.id);requestRender();return}
   if(d.f==='blk'){p.blk=p.blk||{};p.blk[d.n]=Math.max(.5,Math.round((parseFloat(String(t.value).replace(',','.'))||2)*2)/2);save(p.id);requestRender();return}
@@ -1049,6 +1066,7 @@ document.addEventListener('change',e=>{
   if(!d.k)return;
   const o=ovOf(p,d.k),c0=build(p),st0=c0.flat.find(s=>s.key===d.k);
   if(d.f==='owner')o.owner=t.value.trim();
+  else if(d.f==='email'){const v=t.value.trim(),ow=st0?st0.owner:'';if(ow){p.mail=p.mail||{};if(v)p.mail[mkey(ow)]=v;else delete p.mail[mkey(ow)]}else{if(v)o.email=v;else delete o.email}}
   else if(d.f==='notes')o.notes=t.value.trim();
   else if(d.f==='pct')o.pct=Math.min(100,Math.max(0,parseInt(t.value,10)||0));
   else if(d.f==='due'){const blockEnd=st0?c0.phases.find(f=>f.n===st0.phase).end:null;if(!t.value||(blockEnd!=null&&t.value===iso(blockEnd)))delete o.due;else o.due=t.value}
