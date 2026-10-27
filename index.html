@@ -66,7 +66,7 @@ main{padding-block:22px 70px}
 .f{display:flex;flex-direction:column;gap:5px;min-width:0}
 .f>label,.lbl{font-size:12px;font-weight:700;color:var(--muted)}
 .hint{font-size:12px;color:var(--soft)}
-input[type=text],input[type=date],input[type=number],select,textarea{color:var(--ink);width:100%;background:var(--surface);border:1.5px solid var(--line2);border-radius:10px;padding:8px 10px;min-width:0}
+input[type=text],input[type=email],input[type=date],input[type=number],select,textarea{color:var(--ink);width:100%;background:var(--surface);border:1.5px solid var(--line2);border-radius:10px;padding:8px 10px;min-width:0}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--royal);box-shadow:var(--focus)}
 .seg{display:flex;background:var(--surface2);border:1.5px solid var(--line2);border-radius:10px;padding:3px;gap:3px;width:max-content;max-width:100%}
 .seg button{border:0;background:transparent;border-radius:7px;padding:6px 14px;font-weight:700;color:var(--muted);cursor:pointer}
@@ -171,6 +171,8 @@ input.rec{width:220px;min-width:0}
 .ovc .ob{height:9px;border-radius:6px;background:var(--line);margin:9px 0 6px;overflow:hidden}.ovc .ob i{display:block;height:100%;border-radius:6px}
 .ovc small{color:var(--muted);font-size:12px}
 .cts{display:grid;gap:8px}
+.tmw{display:grid;gap:8px;margin:8px 0}.tmr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) 150px 110px auto;gap:8px;align-items:center}
+@media (max-width:760px){.tmr{grid-template-columns:minmax(0,1fr) auto;padding:8px;border:1px solid var(--line);border-radius:12px}.tmr .pill,.tmr small{grid-column:1}}
 .ct{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,.9fr) auto;gap:6px;align-items:center}
 @media (max-width:760px){.ct{grid-template-columns:minmax(0,1fr) auto;padding:8px;border:1px solid var(--line);border-radius:12px}.ct input{grid-column:1}.ct .icon-btn{grid-column:2;grid-row:1}}
 .tgrid{padding-top:10px;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr))}
@@ -344,11 +346,12 @@ function evalRule(T,d){
   return {s,why:s==='on'?'':'Termo: '+dec.map(i=>FLD[i.id].l+' = '+vLabel(i.id,i.v)).join('; '),pend};
 }
 function ruleMap(T){const m={};Object.keys(RULES).forEach(k=>m[k]=evalRule(T,RULES[k]));return m}
-const ME_MAIL='guilherme.andradegl.contato@gmail.com';
+const ME_MAILS=['guilherme.lima@i9xc.com','guilherme.andradegl.contato@gmail.com'];
+const teamOf=p=>Array.isArray(p.team)?p.team:[{n:'Projetos',e:ME_MAILS[0]}];
 const mkey=n=>String(n||'').trim().toLowerCase();
 function build(p){
   const H=hols(p.hol||'sp'), G=adjBD(num(p.goLive),H), goAfter=p.goAfter||9, ov=p.ov||{}, blk=p.blk||{};
-  const R=p.termo?ruleMap(p.termo):{};
+  const R=p.termo?ruleMap(p.termo):{}, team=teamOf(p);
   const phases=PH.map(ph=>{
     const steps=ph.s.map((s,i)=>({key:ph.n+'.'+(i+1),code:ph.n+'.'+(i+1),base:s[0],fund:s[1],phase:ph.n,extra:false}));
     (p.extras||[]).filter(x=>x.phase===ph.n).forEach(x=>steps.push({key:'x'+x.id,code:ph.n+'.'+(steps.length+1),base:x.title,fund:0,phase:ph.n,extra:true,xid:x.id,owner0:x.owner}));
@@ -361,8 +364,9 @@ function build(p){
       st.cli=!st.off&&r.s==='cli';
       st.title=st.cli?'Acompanhar entrega do cliente: '+st.base:st.base;
       st.owner=o.owner!=null?o.owner:(st.owner0||'');
-      st.email=(st.owner?((p.mail||{})[mkey(st.owner)]||''):(o.email||'')).trim();
-      st.mine=!st.email||st.email.toLowerCase()===ME_MAIL;
+      const tmb=st.owner?team.find(x=>mkey(x.n)===mkey(st.owner)):null;st.inTeam=!!tmb;
+      st.email=(st.owner?((tmb&&tmb.e)||(p.mail||{})[mkey(st.owner)]||''):(o.email||'')).trim();
+      st.mine=!st.email||ME_MAILS.includes(st.email.toLowerCase());
       st.status=o.status||'Não iniciado';
       st.done=!st.off&&st.status==='Concluído';
       st.pct=st.off?0:(st.done?100:(st.status==='Em andamento'?(o.pct!=null?o.pct:50):0));
@@ -418,7 +422,7 @@ function build(p){
   flat.forEach(st=>{st.proj=p;st.late=!st.off&&!st.done&&st.end<T;st.lateDone=st.done&&st.o.doneAt&&num(st.o.doneAt)>st.end});
   const ab=p.termo&&p.termo.abertura?num(p.termo.abertura):null, W0=ab&&isFinite(ab)?ab:S;
   const pend=[];flat.forEach(st=>st.pend.forEach(id=>{if(pend.indexOf(id)<0)pend.push(id)}));
-  return {p,H,G,goAfter,phases,flat,act,D:U/2,S,Sh,W0,hasAb:W0!==S||!!ab,lastEnd,preEnd,maxEnd:Math.max(preEnd,postEnd),overrun:preEnd>lastEnd,
+  return {p,H,G,team,goAfter,phases,flat,act,D:U/2,S,Sh,W0,hasAb:W0!==S||!!ab,lastEnd,preEnd,maxEnd:Math.max(preEnd,postEnd),overrun:preEnd>lastEnd,
     nOff:flat.length-act.length,nCli:act.filter(s=>s.cli).length,pend,
     prog:act.length?act.reduce((a,s)=>a+s.pct,0)/act.length:0,nDone:act.filter(s=>s.done).length,nLate:act.filter(s=>s.late).length,nBlk:act.filter(s=>s.status==='Bloqueado').length,
     next:act.filter(s=>!s.done).sort((a,b)=>a.end-b.end)[0]||null};
@@ -586,7 +590,7 @@ function stepRow(c,st){
   if(st.off)return `<tr class="off"><td class="tt"><span class="cd">${st.code}</span>${esc(st.base)} <span class="tag off">DESATIVADA</span><small class="why">${esc(st.manualOff?'Desativada manualmente':st.why)}</small></td><td colspan="5" class="hint">Fora do planejamento: sem prazo e sem tarefa no Agenda.</td><td>${calState(p,st)}</td><td></td><td><button class="btn small" data-act="force" data-v="on" data-p="${id}" data-k="${st.key}">${st.manualOff?'Reativar':'Ativar mesmo assim'}</button></td></tr>`;
   const sit=st.done?(st.lateDone?'<span class="pill warn">Concluído c/ atraso</span>':'<span class="pill ok">Concluído</span>'):st.late?'<span class="pill late">Atrasado</span>':'<span class="pill mute">No prazo</span>';
   return `<tr class="${cls}"><td class="tt"><span class="cd">${st.code}</span>${esc(st.title)}${st.extra?` <span class="tag">EXTRA</span>`:''}${st.cli?` <span class="tag cli">CLIENTE</span>`:''}${st.manualOn?` <span class="tag cli">ATIVADA MANUALMENTE</span>`:''}${st.cli&&st.why?`<small class="why">${esc(st.why)}</small>`:''}</td>
-   <td><input type="text" ${d('owner')} value="${esc(st.owner)}" placeholder="Responsável" aria-label="Responsável ${st.code}" style="min-width:130px"><input type="email" ${d('email')} value="${esc(st.email)}" placeholder="E-mail do responsável" aria-label="E-mail ${st.code}" style="min-width:130px;margin-top:4px;font-size:12px">${st.mine?'':'<small class="why">Atribuída a outra pessoa: fora da sua agenda</small>'}</td>
+   <td><input type="text" list="tm-${id}" ${d('owner')} value="${esc(st.owner)}" placeholder="Responsável" aria-label="Responsável ${st.code}" style="min-width:130px"><input type="email" ${d('email')} value="${esc(st.email)}" placeholder="E-mail do responsável" aria-label="E-mail ${st.code}" style="min-width:130px;margin-top:4px;font-size:12px">${st.mine?'':'<small class="why">Atribuída a outra pessoa: fora da sua agenda</small>'}</td>
    <td><select ${d('status')} aria-label="Status ${st.code}">${STATUS.map(x=>`<option ${x===st.status?'selected':''}>${x}</option>`).join('')}</select></td>
    <td><input type="number" min="0" max="100" ${d('pct')} value="${st.pct}" ${st.status==='Em andamento'?'':'disabled'} aria-label="% ${st.code}" style="width:62px"></td>
    <td><input type="date" ${d('due')} value="${iso(st.end)}" aria-label="Prazo ${st.code}" style="min-width:128px" title="${st.o.due?'Prazo ajustado à mão':'Prazo do bloco'}"></td>
@@ -608,11 +612,19 @@ function phaseHTML(c,ph,force){
    ${xf?`<div class="xf"><div class="f"><label for="xf-t">Nova etapa na fase ${ph.n}</label><input id="xf-t" type="text" placeholder="Ex.: Homologar integração com o ERP"></div><div class="f"><label for="xf-o">Responsável</label><input id="xf-o" type="text"></div><button class="btn primary" data-act="xadd" data-p="${id}" data-n="${ph.n}">Adicionar</button><button class="btn ghost" data-act="xclose" data-p="${id}">Cancelar</button></div>`:''}
    </div></details>`;
 }
+function teamTab(c){
+  const p=c.p,id=p.id,cnt=n=>c.act.filter(s=>!s.done&&mkey(s.owner)===mkey(n)).length;
+  return `<section class="panel"><div class="hd" style="margin-bottom:8px"><div><h2>Equipe do projeto</h2><p class="hint" style="margin:2px 0 0">Em cada etapa, escolha o responsável pelo nome e o e-mail entra sozinho. Etapas de quem tem outro e-mail ficam fora da sua agenda.</p></div></div>
+  <div class="tmw">${c.team.map((m,i)=>{const mine=!m.e||ME_MAILS.includes(m.e.toLowerCase());return `<div class="tmr"><input type="text" data-p="${id}" data-f="tn" data-i="${i}" value="${esc(m.n)}" placeholder="Nome" aria-label="Nome"><input type="email" data-p="${id}" data-f="te" data-i="${i}" value="${esc(m.e)}" placeholder="E-mail" aria-label="E-mail"><span class="pill ${mine?'ok':'mute'}">${mine?'Na sua agenda':'Fora da sua agenda'}</span><small class="hint">${cnt(m.n)} ${plural(cnt(m.n),'etapa aberta','etapas abertas')}</small><button class="icon-btn" data-act="tdel" data-p="${id}" data-i="${i}" aria-label="Remover ${esc(m.n)}">✕</button></div>`}).join('')}</div>
+  <div class="acts"><button class="btn" data-act="tadd" data-p="${id}">+ Adicionar pessoa</button></div>
+  <p class="hint">"Projetos" usa o seu e-mail ${ME_MAILS[0]}, então essas etapas vêm para a sua agenda.</p></section>`;
+}
+function teamW(p){if(!Array.isArray(p.team))p.team=teamOf(p).map(x=>Object.assign({},x));return p.team}
 function sigOf(p,st){return [iso(st.end),st.done?1:0,st.code,st.title,p.name].join('|')}
 function pending(c){let n=0,u=0,d=0;c.flat.forEach(st=>{const e=st.o.ev;if(st.off||!st.mine){if(e&&e!=='?')d++}else if(!e){if(!st.done)n++}else if(e!=='?'&&st.o.evSig!==sigOf(c.p,st))u++});return{n,u,d}}
 const phCol=f=>f.off?CP.idle:PCOL[f.n-1];const phLate=f=>!f.off&&f.act.some(z=>z.late&&!z.done);
 function checkTab(c){const id=c.p.id,sel=btab[id]||'all',ph=sel==='all'?null:c.phases.find(f=>f.n===+sel);
-  const tabs=`<div class="btabs" role="tablist" aria-label="Partes da operação"><button role="tab" data-act="btab" data-v="all" data-p="${id}" aria-selected="${!ph}"><b>Visão geral</b><span class="pc" style="color:${c.prog>=100?CP.ok:CP.run}">${Math.round(c.prog)}%</span></button>${c.phases.map(f=>`<button role="tab" data-act="btab" data-v="${f.n}" data-p="${id}" aria-selected="${ph&&ph.n===f.n}" class="${f.off?'off':''}"><i style="background:${phCol(f)}"></i><span class="tn">${f.n}. ${esc(f.t)}</span><span class="pc" style="color:${phCol(f)}">${f.off?'—':Math.round(f.pct)+'%'}</span>${phLate(f)?'<b class="lt" title="Etapa atrasada">!</b>':''}</button>`).join('')}</div>`;
+  const tabs=`<datalist id="tm-${id}">${c.team.map(m=>`<option value="${esc(m.n)}">${esc(m.e)}</option>`).join('')}</datalist><div class="btabs" role="tablist" aria-label="Partes da operação"><button role="tab" data-act="btab" data-v="all" data-p="${id}" aria-selected="${!ph}"><b>Visão geral</b><span class="pc" style="color:${c.prog>=100?CP.ok:CP.run}">${Math.round(c.prog)}%</span></button>${c.phases.map(f=>`<button role="tab" data-act="btab" data-v="${f.n}" data-p="${id}" aria-selected="${ph&&ph.n===f.n}" class="${f.off?'off':''}"><i style="background:${phCol(f)}"></i><span class="tn">${f.n}. ${esc(f.t)}</span><span class="pc" style="color:${phCol(f)}">${f.off?'—':Math.round(f.pct)+'%'}</span>${phLate(f)?'<b class="lt" title="Etapa atrasada">!</b>':''}</button>`).join('')}</div>`;
   if(ph)return tabs+phaseHTML(c,ph,true);
   const cards=`<div class="ov">${c.phases.map(f=>`<button class="ovc" data-act="btab" data-v="${f.n}" data-p="${id}"><div class="oh"><span class="n" style="background:${PCOL[f.n-1]}">${f.n}</span><b>${esc(f.t)}</b><span class="pc" style="color:${phCol(f)}">${f.off?'desativado':Math.round(f.pct)+'%'}</span></div><div class="ob"><i style="width:${f.off?0:f.pct.toFixed(0)}%;background:${phCol(f)}"></i></div><small>${f.off?'sem prazo':f.nDone+'/'+f.act.length+' etapas · até '+fD(f.fin)}${f.act.some(z=>z.late&&!z.done)?' · <span style="color:'+CP.bad+'">atrasada</span>':''}</small></button>`).join('')}</div>`;
   return tabs+`<section class="panel"><h2>Evolução por parte da operação</h2>${cards}</section>
@@ -645,8 +657,8 @@ function projectView(c){
    <div class="kp ${c.nLate?'bad':''}"><div class="k">Atrasadas</div><div class="v">${c.nLate}</div><div class="s">${c.nBlk} ${plural(c.nBlk,'bloqueada','bloqueadas')}</div></div>
    <div class="kp"><div class="k">Próximo prazo</div><div class="v">${c.next?fD(c.next.end):'—'}</div><div class="s">${c.next?esc(c.next.code+' '+c.next.title):'tudo concluído'}</div></div></div>
   ${warn.join('')}${t}
-  <div class="seg" style="margin:14px 0" role="group" aria-label="Seções do projeto"><button data-act="ptab" data-v="check" data-p="${id}" aria-pressed="${ptab[id]!=='termo'}">Checklist</button><button data-act="ptab" data-v="termo" data-p="${id}" aria-pressed="${ptab[id]==='termo'}">Termo de abertura</button></div>
-  ${ptab[id]==='termo'?termoTab(c):checkTab(c)}`;
+  <div class="seg" style="margin:14px 0" role="group" aria-label="Seções do projeto"><button data-act="ptab" data-v="check" data-p="${id}" aria-pressed="${ptab[id]!=='termo'&&ptab[id]!=='equipe'}">Checklist</button><button data-act="ptab" data-v="termo" data-p="${id}" aria-pressed="${ptab[id]==='termo'}">Termo de abertura</button><button data-act="ptab" data-v="equipe" data-p="${id}" aria-pressed="${ptab[id]==='equipe'}">Equipe</button></div>
+  ${ptab[id]==='termo'?termoTab(c):ptab[id]==='equipe'?teamTab(c):checkTab(c)}`;
 }
 
 /* ---------- hoje ---------- */
@@ -1064,6 +1076,8 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='delno'){delAsk=null;requestRender()}
   else if(a==='btab'){btab[id]=b.dataset.v;lastFocus=null;requestRender();window.scrollTo({top:0})}
+  else if(a==='tadd'&&p){teamW(p).push({n:'',e:''});save(id);requestRender()}
+  else if(a==='tdel'&&p){teamW(p).splice(+b.dataset.i,1);save(id);requestRender()}
   else if(a==='ptab'){ptab[id]=b.dataset.v;lastFocus=null;requestRender()}
   else if(a==='tnew'&&p){p.termo={};save(id);requestRender()}
   else if(a==='cadd'||a==='cdel'){const sc=b.dataset.tp,T0=sc==='w'?W.termo:(P[sc]||{}).termo;if(T0){const L=ctc(T0).map(c=>Object.assign({},c));if(a==='cadd')L.push({n:'',a:'',e:'',t:''});else L.splice(+b.dataset.ci,1);T0.contatos=L;delete T0.contato;delete T0.email;delete T0.tel;if(sc!=='w')save(sc);lastFocus=null;requestRender()}}
@@ -1096,10 +1110,14 @@ document.addEventListener('change',e=>{
   if(d.f==='blk'){p.blk=p.blk||{};p.blk[d.n]=Math.max(.5,Math.round((parseFloat(String(t.value).replace(',','.'))||2)*2)/2);save(p.id);requestRender();return}
   if(d.f==='recado'){p.recado=t.value.trim();save(p.id);return}
   if(d.f==='golive'){if(t.value){p.goLive=t.value;const r=projectTasks(p);save(p.id);requestRender();if(r.changed)toast(r.ok?'Go Live alterado: projetei as tarefas para caber':'Go Live alterado: mesmo no mínimo não cabe')}return}
+  if(d.f==='tn'||d.f==='te'){const T=teamW(p),m=T[+d.i];if(!m)return;
+    if(d.f==='te')m.e=t.value.trim();
+    else{const old=m.n,nw=t.value.trim();if(old&&nw!==old){Object.values(p.ov||{}).forEach(o=>{if(o.owner&&mkey(o.owner)===mkey(old))o.owner=nw});(p.extras||[]).forEach(x=>{if(x.owner&&mkey(x.owner)===mkey(old))x.owner=nw})}m.n=nw}
+    save(p.id);requestRender();return}
   if(!d.k)return;
   const o=ovOf(p,d.k),c0=build(p),st0=c0.flat.find(s=>s.key===d.k);
   if(d.f==='owner')o.owner=t.value.trim();
-  else if(d.f==='email'){const v=t.value.trim(),ow=st0?st0.owner:'';if(ow){p.mail=p.mail||{};if(v)p.mail[mkey(ow)]=v;else delete p.mail[mkey(ow)]}else{if(v)o.email=v;else delete o.email}}
+  else if(d.f==='email'){const v=t.value.trim(),ow=st0?st0.owner:'';if(ow){const T=teamW(p),m=T.find(x=>mkey(x.n)===mkey(ow));if(m)m.e=v;else if(v)T.push({n:ow,e:v})}else{if(v)o.email=v;else delete o.email}}
   else if(d.f==='notes')o.notes=t.value.trim();
   else if(d.f==='pct')o.pct=Math.min(100,Math.max(0,parseInt(t.value,10)||0));
   else if(d.f==='due'){const blockEnd=st0?c0.phases.find(f=>f.n===st0.phase).end:null;if(!t.value||(blockEnd!=null&&t.value===iso(blockEnd)))delete o.due;else o.due=t.value}
