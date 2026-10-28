@@ -538,7 +538,7 @@ const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) { /* */ } }
 const IN_ARTIFACT = !!(window.claude && typeof window.claude.use === 'function');
 
 /* ---------- acesso (login Google @i9xc.com) e servidor intermediário ---------- */
-const CFG = { GOOGLE_CLIENT_ID: '', API: 'https://pedacyjnaljjwkrrmrob.supabase.co/functions/v1/entrevistador', DOMAIN: 'i9xc.com' };
+const CFG = { GOOGLE_CLIENT_ID: '885059349253-pqsjor22k96i1u7n55dlvea7r0upfu0f.apps.googleusercontent.com', API: 'https://pedacyjnaljjwkrrmrob.supabase.co/functions/v1/entrevistador', DOMAIN: 'i9xc.com' };
 const GATED = !!CFG.GOOGLE_CLIENT_ID && !CFG.GOOGLE_CLIENT_ID.startsWith('%%') && !IN_ARTIFACT;
 const Auth = { token: '', email: '', name: '', exp: 0, get ok() { return !!this.token && this.exp * 1000 > Date.now() + 30000; } };
 function jwtPayload(t) { try { return JSON.parse(decodeURIComponent(escape(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))))); } catch (e) { return null; } }
