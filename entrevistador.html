@@ -1158,7 +1158,7 @@ async function generate() {
     btn.textContent = 'Revisando respostas…'; setState('thinking', 'Revisando');
     let ai = null; try { ai = await runAI(); } catch (e) { toast(e && e.code === 'not_granted' ? 'Sem permissão para a IA. Gerando só com as regras locais.' : 'A revisão com IA falhou. Gerando com as regras locais.'); }
     if (ai && Array.isArray(ai.ajustes)) ai.ajustes.forEach((a) => {
-      const f = FIELD[a.cell]; if (!f) return; const nv = validAI(a.cell, a.valor); if (nv === null) return;
+      const f = FIELD[a.cell]; if (!f) return; if (S.vals[a.cell] && S.vals[a.cell].src === 'manual') return; const nv = validAI(a.cell, a.valor); if (nv === null) return;
       const cur = S.vals[a.cell] || { v: '', obs: '' }; const nobs = a.obs && a.obs !== 'null' ? String(a.obs) : cur.obs;
       if (nv === cur.v && nobs === cur.obs) return;
       changes.push({ label: f.label, de: cur.v, para: nv, obs: nobs }); S.vals[a.cell] = { v: nv, obs: nobs || '', src: 'ia' };
