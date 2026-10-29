@@ -647,7 +647,7 @@ function projectView(c){
   return `<button class="back" data-act="nav" data-v="portfolio">← Todos os projetos</button>
   <div class="hd"><div style="flex:1 1 360px"><div class="eyebrow">Checklist de implantação funcional</div><input class="nm" id="p-name" data-p="${id}" data-f="pname" value="${esc(p.name)}" aria-label="Nome do projeto">${p.termo&&ctc(p.termo).some(c=>!ctEmpty(c))?`<div class="hint" style="margin:4px 0 0 4px">Pontos focais: ${ctc(p.termo).filter(c=>!ctEmpty(c)).map(c=>esc(c.n||'sem nome')+(c.a?' ('+esc(c.a)+')':'')).join(' · ')}</div>`:''}</div>
    <div class="acts" style="margin:0">${window.HOSTED?`<button class="btn primary" data-act="ics" data-p="${id}">Baixar agenda (.ics)</button>`:`<button class="btn primary" data-act="sync" data-p="${id}" ${sy&&sy.run?'disabled':''}>Enviar ao Google Agenda${pd.n+pd.u+pd.d?` (${pd.n+pd.u+pd.d})`:''}</button>`}
-   <button class="btn" data-act="project" data-p="${id}" title="Encaixa todas as etapas entre hoje e o Go Live">Projetar tarefas</button><input type="text" class="rec" data-p="${id}" data-f="recado" value="${esc(p.recado||'')}" placeholder="Recado do dia (opcional)" aria-label="Recado para a imagem" maxlength="160"><button class="btn" data-act="img" data-p="${id}">Gerar imagem</button><button class="btn" data-act="rep" data-p="${id}">Status report</button>${p.blk0?`<button class="btn" data-act="restore" data-p="${id}">Restaurar durações</button>`:''}
+   <button class="btn" data-act="project" data-p="${id}" title="Encaixa todas as etapas entre hoje e o Go Live">Projetar tarefas</button><input type="text" class="rec" data-p="${id}" data-f="recado" value="${esc(p.recado||'')}" placeholder="Recado do dia (opcional)" aria-label="Recado para a imagem" maxlength="160"><button class="btn" data-act="img" data-p="${id}">Gerar imagem</button><button class="btn" data-act="rep" data-p="${id}">Status report</button><button class="btn" data-act="trk" data-p="${id}">Action tracker</button>${p.blk0?`<button class="btn" data-act="restore" data-p="${id}">Restaurar durações</button>`:''}
    <button class="btn danger" data-act="del" data-p="${id}">${delAsk===id?'Confirmar exclusão':'Excluir'}</button></div></div>
   ${delAsk===id?`<div class="alert bad"><span>Isso apaga o projeto e remove as ${c.flat.filter(s=>s.o.ev&&s.o.ev!=='?').length} tarefas dele do Agenda. Clique de novo em <b>Confirmar exclusão</b> ou <button class="btn small ghost" data-act="delno">cancelar</button>.</span></div>`:''}
   <div class="prev" style="margin-top:0">
@@ -752,9 +752,9 @@ function fit(g,t,w){t=String(t);if(g.measureText(t).width<=w)return t;while(t.le
 function wrap(g,t,w,maxL){const words=String(t).split(/\s+/),L=[];let cur='';words.forEach(x=>{const n=cur?cur+' '+x:x;if(g.measureText(n).width>w&&cur){L.push(cur);cur=x}else cur=n});if(cur)L.push(cur);if(L.length>maxL){L.length=maxL;L[maxL-1]=fit(g,L[maxL-1]+'…',w)}return L}
 const colFor=(pct,late)=>late?CP.bad:pct>=100?CP.ok:pct>0?CP.run:CP.idle;
 function loadRing(){return new Promise(res=>{const i=document.querySelector('.brand img');if(!i){res(null);return}const m=new Image();m.onload=()=>res(m);m.onerror=()=>res(null);m.src=i.src})}
-async function canvasOut(draw,H,filename){
+async function canvasOut(draw,H,filename,Wd){
   try{await document.fonts.load('700 20px Montserrat');await document.fonts.load('400 20px Montserrat')}catch(e){}
-  const ring=await loadRing(),W=1080,S=2,cv=document.createElement('canvas');cv.width=W*S;cv.height=H*S;
+  const ring=await loadRing(),W=Wd||1080,S=2,cv=document.createElement('canvas');cv.width=W*S;cv.height=H*S;
   const g=cv.getContext('2d');g.scale(S,S);g.fillStyle='#F4F3F9';g.fillRect(0,0,W,H);draw(g,W,ring);
   const blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',.92));const dl=await use('downloads');
   if(!dl){toast('Download indisponível nesta visualização');return}
@@ -1058,6 +1058,7 @@ document.addEventListener('click',async e=>{
   else if(a==='img'&&p)exportImage(id);
   else if(a==='imgall')exportPortfolioImage();
   else if(a==='rep'&&p)exportStatus([id]);
+  else if(a==='trk'&&p)exportTracker(id);
   else if(a==='repall'){const ids=Object.values(P).sort((x,y)=>(x.created||0)-(y.created||0)).map(x=>x.id);(async()=>{for(const i of ids){await exportStatus([i]);await new Promise(r=>setTimeout(r,400))}if(ids.length>1)toast(ids.length+' imagens geradas, uma por projeto')})()}
   else if(a==='project'&&p){const r=projectTasks(p);save(id);requestRender();toast(!r.changed?'O plano já cabe até o Go Live. Nada a ajustar.':r.ok?'Tarefas projetadas: '+r.notes.length+' ajustes para caber no Go Live':'Mesmo no mínimo não cabe: ajuste o Go Live ou desative etapas')}
   else if(a==='restore'&&p&&p.blk0){p.blk=p.blk0;p.pp=p.pp0||{};delete p.blk0;delete p.pp0;save(id);requestRender();toast('Durações restauradas')}
@@ -1135,4 +1136,116 @@ render();
   else{loaded=true;setSync('none');requestRender()}
   mcpNs=await use('mcp');
 })();
+/* ---------- action tracker: calendário com os marcos do projeto ---------- */
+function trackerMarks(c){
+  const T=todayN(),H=c.H,k2=k=>c.flat.find(s=>s.key===k),ph=n=>c.phases.find(f=>f.n===n),M=[];
+  const live=keys=>keys.map(k2).filter(s=>s&&!s.off);
+  const push=(id,label,icon,col,date,done,extra)=>M.push(Object.assign({id,label,icon,col,date,done,late:!done&&date<T},extra||{}));
+  const byKeys=(id,label,icon,col,keys)=>{const L=live(keys);if(L.length)push(id,label,icon,col,Math.max.apply(null,L.map(s=>s.end)),L.every(s=>s.done))};
+  const byPh=(id,label,icon,col,n)=>{const f=ph(n);if(f&&!f.off)push(id,label,icon,col,f.fin,f.nDone===f.act.length)};
+  const st0=c.hasAb?c.W0:c.S;
+  push('ini','Início do projeto','play',PCOL[0],st0,st0<=T);
+  const f2=ph(2);if(f2&&!f2.off){const a=k2('2.7');push('kick','Kickoff com o cliente','bubble',PCOL[1],f2.start,!!(a&&a.done))}
+  byPh('ti','TI e fornecedores homologados','monitor',PCOL[2],3);
+  const hire=live(['4.1','4.2','4.3']);
+  if(hire.length){const hd=Math.max.apply(null,hire.map(s=>s.end));
+    push('rh','Pessoas contratadas','people',PCOL[3],hd,hire.every(s=>s.done));
+    const tr=k2('4.6');
+    if(tr&&!tr.off){const ts=Math.min(nextBD(hd,H),Math.max(hd,tr.end));push('trs','Início dos treinamentos','cap',PCOL[3],ts,tr.status!=='Não iniciado')}}
+  const tre=live(['4.6','4.7']);if(tre.length)push('tre','Time treinado e certificado','cap',PCOL[3],Math.max.apply(null,tre.map(s=>s.end)),tre.every(s=>s.done));
+  byPh('cx','Qualidade e scripts prontos','star',PCOL[4],5);
+  byPh('cfg','Sistemas em produção','gear',PCOL[5],6);
+  byKeys('uat','Aprovação do cliente (UAT)','check',PCOL[6],['7.6']);
+  byPh('fac','Estrutura e facilities prontas','building',PCOL[7],8);
+  byKeys('pre','Aprovação para o Go Live','clip',PCOL[8],['9.7']);
+  push('gl','GO LIVE','flag',CP.amber,c.G,c.G<T,{big:true});
+  byKeys('ho','Fim do acompanhamento','arrow',PCOL[9],['10.7']);
+  M.sort((a,b)=>a.date-b.date);
+  return M;
+}
+function trkIcon(g,kind,x,y,r,col,fg){
+  g.save();g.fillStyle=col;g.beginPath();g.arc(x,y,r,0,7);g.fill();
+  g.fillStyle=fg;g.strokeStyle=fg;g.lineWidth=Math.max(1.6,r*.16);g.lineCap='round';g.lineJoin='round';
+  const R=r;
+  const person=(px,py,k)=>{g.beginPath();g.arc(px,py-.3*R*k,.24*R*k,0,7);g.fill();g.beginPath();g.ellipse(px,py+.42*R*k,.4*R*k,.4*R*k,0,Math.PI,0);g.fill()};
+  if(kind==='people'){person(x-.5*R,y+.06*R,.78);person(x+.5*R,y+.06*R,.78);person(x,y+.12*R,1)}
+  else if(kind==='cap'){g.beginPath();g.moveTo(x-.68*R,y-.12*R);g.lineTo(x,y-.46*R);g.lineTo(x+.68*R,y-.12*R);g.lineTo(x,y+.22*R);g.closePath();g.fill();
+    g.beginPath();g.moveTo(x-.4*R,y+.02*R);g.lineTo(x-.4*R,y+.36*R);g.quadraticCurveTo(x,y+.6*R,x+.4*R,y+.36*R);g.lineTo(x+.4*R,y+.02*R);g.lineTo(x,y+.22*R);g.closePath();g.fill();
+    g.beginPath();g.moveTo(x+.68*R,y-.12*R);g.lineTo(x+.68*R,y+.3*R);g.stroke()}
+  else if(kind==='monitor'){g.beginPath();g.roundRect(x-.55*R,y-.44*R,1.1*R,.76*R,.1*R);g.stroke();g.beginPath();g.moveTo(x,y+.32*R);g.lineTo(x,y+.5*R);g.moveTo(x-.26*R,y+.52*R);g.lineTo(x+.26*R,y+.52*R);g.stroke()}
+  else if(kind==='gear'){g.beginPath();g.arc(x,y,.3*R,0,7);g.stroke();for(let i=0;i<8;i++){g.save();g.translate(x,y);g.rotate(i*Math.PI/4);g.fillRect(-.07*R,-.62*R,.14*R,.22*R);g.restore()}g.beginPath();g.arc(x,y,.42*R,0,7);g.stroke()}
+  else if(kind==='check'){g.lineWidth=R*.24;g.beginPath();g.moveTo(x-.4*R,y+.02*R);g.lineTo(x-.1*R,y+.32*R);g.lineTo(x+.45*R,y-.34*R);g.stroke()}
+  else if(kind==='building'){g.fillRect(x-.4*R,y-.52*R,.8*R,1.04*R);g.fillStyle=col;for(let i=0;i<2;i++)for(let j=0;j<3;j++)g.fillRect(x-.25*R+i*.28*R,y-.38*R+j*.28*R,.14*R,.14*R)}
+  else if(kind==='clip'){g.beginPath();g.roundRect(x-.4*R,y-.46*R,.8*R,1*R,.1*R);g.fill();g.fillStyle=col;g.fillRect(x-.2*R,y-.52*R,.4*R,.16*R);g.fillRect(x-.24*R,y-.12*R,.48*R,.08*R);g.fillRect(x-.24*R,y+.1*R,.48*R,.08*R);g.fillRect(x-.24*R,y+.32*R,.3*R,.08*R)}
+  else if(kind==='flag'){g.fillRect(x-.42*R,y-.55*R,.1*R,1.1*R);const sz=.2*R;for(let a=0;a<4;a++)for(let b=0;b<4;b++){g.fillStyle=(a+b)%2?fg:'rgba(0,0,0,.0)';if((a+b)%2)g.fillRect(x-.32*R+b*sz,y-.55*R+a*sz,sz,sz)}g.strokeStyle=fg;g.lineWidth=1.2;g.strokeRect(x-.32*R,y-.55*R,4*sz,4*sz)}
+  else if(kind==='play'){g.beginPath();g.moveTo(x-.28*R,y-.45*R);g.lineTo(x+.48*R,y);g.lineTo(x-.28*R,y+.45*R);g.closePath();g.fill()}
+  else if(kind==='bubble'){g.beginPath();g.roundRect(x-.55*R,y-.42*R,1.1*R,.76*R,.2*R);g.fill();g.beginPath();g.moveTo(x-.2*R,y+.3*R);g.lineTo(x-.35*R,y+.56*R);g.lineTo(x+.05*R,y+.32*R);g.fill()}
+  else if(kind==='arrow'){g.beginPath();g.moveTo(x-.5*R,y);g.lineTo(x+.4*R,y);g.moveTo(x+.1*R,y-.32*R);g.lineTo(x+.45*R,y);g.lineTo(x+.1*R,y+.32*R);g.stroke()}
+  else if(kind==='star'){g.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr_=i%2?.26*R:.6*R;g.lineTo(x+Math.cos(a)*rr_,y+Math.sin(a)*rr_)}g.closePath();g.fill()}
+  g.restore();
+}
+function trkBadge(g,m,x,y,r){
+  if(m.done){g.fillStyle=CP.ok;g.beginPath();g.arc(x+r*.72,y+r*.72,r*.42,0,7);g.fill();g.strokeStyle='#fff';g.lineWidth=Math.max(1.4,r*.12);g.lineCap='round';g.beginPath();g.moveTo(x+r*.55,y+r*.72);g.lineTo(x+r*.7,y+r*.88);g.lineTo(x+r*.95,y+r*.56);g.stroke()}
+  else if(m.late){g.fillStyle=CP.bad;g.beginPath();g.arc(x+r*.72,y+r*.72,r*.42,0,7);g.fill();g.fillStyle='#fff';g.font='800 '+Math.round(r*.62)+'px '+FONT;g.textAlign='center';g.fillText('!',x+r*.72,y+r*.72+r*.22);g.textAlign='left'}
+}
+async function exportTracker(id){
+  const p=P[id];if(!p)return;const c=build(p),T=todayN(),M=trackerMarks(c),H=c.H;
+  if(!M.length){toast('Sem marcos para mostrar');return}
+  const W=1600,X=44,CW=(W-X*2-26)/7,CHT=112;
+  const first=M[0].date,last=M[M.length-1].date;
+  const byDay={};M.forEach(m=>(byDay[m.date]=byDay[m.date]||[]).push(m));
+  const mo=n=>{const d=new Date(n*D0);return d.getUTCFullYear()*12+d.getUTCMonth()};
+  const months=[];for(let q=mo(first);q<=mo(last)&&months.length<8;q++)months.push(q);
+  const geo=months.map(q=>{const y=Math.floor(q/12),m=q%12,n1=Math.floor(Date.UTC(y,m,1)/D0),nd=Math.floor(Date.UTC(y,m+1,1)/D0)-n1,off=(dow(n1)+6)%7,tot=Math.ceil((off+nd)/7),keep=[];for(let r=0;r<tot;r++){let ok=false;for(let q=0;q<7;q++){const dd=r*7+q-off+1;if(dd<1||dd>nd)continue;const n=n1+dd-1;if(n>=first&&n<=last&&(isBD(n,H)||byDay[n]))ok=true}if(ok)keep.push(r)}return{y,m,n1,nd,off,rows:keep.length,keep}}).filter(G=>G.rows>0);
+  const nxt=M.find(m=>!m.done&&m.date>=T)||null,late=M.filter(m=>m.late),dn=M.filter(m=>m.done).length;
+  const rowsList=Math.ceil(M.length/2),listH=64+rowsList*46;
+  const topY=120,kpiH=128,listY=topY+kpiH+22;
+  const calY=listY+listH+28,calH=geo.reduce((a,m)=>a+86+m.rows*CHT+26+14,0);
+  const H2=calY+calH+70;
+  await canvasOut((g,W0,ring)=>{
+    head(g,ring,'Action tracker · marcos do projeto',c.p.name);
+    const kw=(W-X*2-48)/4;
+    const left=countBD(T,c.G,H);
+    kpi(g,X,topY,kw,'Go Live',fD(c.G),(c.G<T?'realizado':left+' '+plural(left,'dia útil','dias úteis')+' restantes')+' · '+fmt(c.G,{weekday:'long'}),true);
+    kpi(g,X+(kw+16),topY,kw,'Próximo marco',nxt?fD(nxt.date):'—',nxt?nxt.label+' · '+(nxt.date===T?'hoje':'em '+(nxt.date-T)+' dias'):'Todos os marcos passaram');
+    kpi(g,X+2*(kw+16),topY,kw,'Marcos concluídos',dn+' de '+M.length,'Contando o que já foi entregue');
+    kpi(g,X+3*(kw+16),topY,kw,'Marcos atrasados',String(late.length),late.length?late.slice(0,2).map(m=>m.label).join(' · '):'Nenhum atrasado',false,late.length?CP.bad:CP.ok);
+    // lista de marcos
+    rr(g,X,listY,W-X*2,listH,20,'#fff',CP.line);
+    g.fillStyle=CP.indigo;g.font='800 18px '+FONT;g.fillText('Marcos do projeto',X+26,listY+36);
+    const colW=(W-X*2-52-24)/2;
+    M.forEach((m,i)=>{const col=i<rowsList?0:1,row=i%rowsList,x=X+26+col*(colW+24),y=listY+62+row*46;
+      trkIcon(g,m.icon,x+17,y+17,17,m.col,m.col===CP.amber?CP.ink:'#fff');trkBadge(g,m,x+17,y+17,17);
+      g.fillStyle=CP.ink;g.font=(m.big?'800':'600')+' 15px '+FONT;g.fillText(fit(g,m.label,colW-210),x+46,y+22);
+      g.textAlign='right';g.font='700 14px '+FONT;g.fillStyle=m.done?CP.ok:m.late?CP.bad:CP.mute;g.fillText(fFullW(m.date).replace(/\/(\d{4})$/,''),x+colW,y+14);
+      g.font='500 12px '+FONT;g.fillText(m.done?'concluído':m.late?'atrasado '+(T-m.date)+' d':m.date===T?'hoje':'em '+(m.date-T)+' d',x+colW,y+31);g.textAlign='left'});
+    // calendários
+    let y=calY;
+    geo.forEach(G=>{
+      rr(g,X,y,W-X*2,86+G.rows*CHT+26,20,'#fff',CP.line);
+      g.fillStyle=CP.indigo;g.font='800 26px '+FONT;g.fillText(fmt(G.n1,{month:'long'}).toUpperCase()+' '+G.y,X+26,y+44);
+      ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'].forEach((w,i)=>{g.fillStyle=i>4?CP.idle:CP.mute;g.font='700 12px '+FONT;g.textAlign='center';g.fillText(w.toUpperCase(),X+13+i*CW+CW/2-0,y+78);g.textAlign='left'});
+      const gy=y+88,gx=X+13;
+      for(let d=1;d<=G.nd;d++){
+        const n=G.n1+d-1,idx=G.off+d-1,rk=G.keep.indexOf(Math.floor(idx/7));if(rk<0)continue;const cx=gx+(idx%7)*CW,cy=gy+rk*CHT,wk=dow(n)===0||dow(n)===6,hol=H.has(n)&&!wk,ms=byDay[n]||[],isT=n===T,gl=ms.some(m=>m.id==='gl');
+        g.fillStyle=gl?'#FFF3CC':isT?'#EEF0FF':wk||hol?'#F6F5FB':'#fff';g.fillRect(cx,cy,CW,CHT);
+        g.strokeStyle=CP.line;g.lineWidth=1;g.strokeRect(cx,cy,CW,CHT);
+        if(isT){g.strokeStyle=CP.run;g.lineWidth=3;g.strokeRect(cx+1.5,cy+1.5,CW-3,CHT-3)}
+        g.fillStyle=wk||hol?CP.idle:CP.ink;g.font='700 16px '+FONT;g.fillText(String(d),cx+10,cy+24);
+        if(isT){g.fillStyle=CP.run;g.font='800 10px '+FONT;g.textAlign='right';g.fillText('HOJE',cx+CW-8,cy+22);g.textAlign='left'}
+        else if(hol){g.fillStyle=CP.idle;g.font='600 10px '+FONT;g.textAlign='right';g.fillText('feriado',cx+CW-8,cy+22);g.textAlign='left'}
+        const k=Math.min(ms.length,3),rh=k<=2?40:28,dr=k<=2?14:10,ml=k<=2?2:1;
+        ms.slice(0,3).forEach((m,i)=>{const my=cy+34+i*rh;
+          trkIcon(g,m.icon,cx+12+dr,my+dr,dr,m.col,m.col===CP.amber?CP.ink:'#fff');trkBadge(g,m,cx+12+dr,my+dr,dr);
+          g.fillStyle=m.late?CP.bad:CP.ink;g.font=(m.big?'800':'700')+' 12.5px '+FONT;
+          wrap(g,m.label,CW-24-dr*2-8,ml).forEach((l,j)=>g.fillText(l,cx+12+dr*2+8,my+(ml===1?dr+4:dr-1+j*13)))});
+        if(ms.length>3){g.fillStyle=CP.mute;g.font='700 11px '+FONT;g.fillText('+'+(ms.length-3),cx+CW-26,cy+CHT-10)}
+      }
+      y+=86+G.rows*CHT+26+14;
+    });
+    g.fillStyle='#8280A8';g.font='500 13px '+FONT;
+    g.fillText('Legenda: círculo verde com visto = concluído · vermelho com ! = atrasado · contorno azul = hoje · fundo amarelo = Go Live',X,H2-34);
+    g.fillText('PMO I9XC · gerado em '+fFull(T)+' às '+new Date().toTimeString().slice(0,5),X,H2-14);
+  },H2,'Action Tracker - '+c.p.name.replace(/[\\/:*?"<>|]/g,' ').trim()+' - '+iso(T)+'.jpg',W);
+}
 </script>
